@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manufacturing ERP - Live Viewer & Architecture Document</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      padding: 14px 24px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #38bdf8;
+    }
+    .badge {
+      background: #0284c7;
+      color: white;
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+    }
+    .tab-btn {
+      background: #334155;
+      color: #cbd5e1;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.88rem;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+    }
+    .main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .editor-pane {
+      width: 42%;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+    }
+    .editor-header {
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      background: #090d16;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    textarea {
+      flex: 1;
+      background: #131c2e;
+      color: #f1f5f9;
+      border: none;
+      padding: 16px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 0.88rem;
+      resize: none;
+      outline: none;
+      line-height: 1.5;
+    }
+    .render-btn {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .render-btn:hover {
+      background: #059669;
+    }
+    .preview-pane {
+      flex: 1;
+      background: #090d16;
+      overflow: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #diagram-output {
+      width: 100%;
+      min-height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .error-box {
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid #ef4444;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 10px;
+      display: none;
+      font-family: monospace;
+      font-size: 0.85rem;
+      width: 90%;
+    }
+    .dbml-preview {
+      width: 100%;
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      font-family: monospace;
+      font-size: 0.88rem;
+      white-space: pre-wrap;
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Enterprise Manufacturing ERP <span class="badge">Official Technical Architecture</span></h1>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" id="btn-flow" onclick="switchView('flow')">1. Master Flowchart (Visual)</button>
+      <button class="tab-btn" id="btn-db" onclick="switchView('db')">2. Complete 51-Table DBML Schema</button>
+    </div>
+  </header>
+
+  <div class="main-content">
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span id="editor-title">Editing: Master Manufacturing Flowchart (Mermaid)</span>
+        <button class="render-btn" onclick="renderCurrent()">Update / Render</button>
+      </div>
+      <textarea id="code-box" spellcheck="false"></textarea>
+    </div>
+
+    <div class="preview-pane">
+      <div id="error-box" class="error-box"></div>
+      <div id="diagram-output"></div>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      securityLevel: 'loose',
+      flowchart: { useMaxWidth: false, htmlLabels: true }
+    });
+
+    const flowchartSource = `flowchart TB
+
+    %% ================= 1. FIRST-TIME COMPANY CREATION =================
+    subgraph SETUP["1. COMPANY CREATION & SETUP (FIRST-TIME ONLY)"]
+        direction TB
+        SETUP_START([User Opens ERP Web App]) --> CO_CHECK{Company Already Created?}
+        CO_CHECK -- No --> CREATE_CO[Create Company: Name, Address, GST/Tax ID, Currency, FY]
+        CREATE_CO --> CREATE_ADMIN[Create Super Admin Account: Email & Password]
+        CREATE_ADMIN --> VERIFY_OTP[Verify Email / Mobile OTP]
+        VERIFY_OTP --> WIZARD[Setup Wizard: Branches, Departments, Warehouses]
+        WIZARD --> ENABLE_MODS[Enable Active Modules: HR, Inv, Mfg, Proj, Accounts]
+        ENABLE_MODS --> WORKSPACE_READY[Company Workspace Configured]
+        WORKSPACE_READY --> LOGIN_PAGE
+        CO_CHECK -- Yes --> LOGIN_PAGE[Open Login Page: Company Code, Email & Password]
+    end
+
+    %% ================= 2. AUTHENTICATION & SECURITY =================
+    subgraph AUTH["2. AUTHENTICATION & ROLE GOVERNANCE"]
+        direction TB
+        LOGIN_PAGE --> SUBMIT_AUTH[Submit Credentials]
+        SUBMIT_AUTH --> CHECK_AUTH{Credentials Valid?}
+        CHECK_AUTH -- No --> AUTH_ERR[Display Error & Lock After Max Attempts]
+        AUTH_ERR --> LOGIN_PAGE
+        CHECK_AUTH -- Yes --> CHECK_MFA{Two-Factor Auth Enabled?}
+        CHECK_MFA -- Yes --> ENTER_OTP[Enter OTP / Authenticator Code]
+        ENTER_OTP --> VALIDATE_MFA{OTP Valid?}
+        VALIDATE_MFA -- No --> AUTH_ERR
+        VALIDATE_MFA -- Yes --> GEN_SESSION[Issue Secure JWT Token & Session]
+        CHECK_MFA -- No --> GEN_SESSION
+        
+        GEN_SESSION --> RESOLVE_ROLE{Resolve User Role Tier}
+        RESOLVE_ROLE -- Tier 1: Super Admin --> SUPER_DASH[Super Admin Global Panel]
+        RESOLVE_ROLE -- Tier 2: Module Manager --> MGR_DASH[Module Manager Operational Dashboard]
+        RESOLVE_ROLE -- Tier 3: Employee/Operator --> EMP_PORTAL[Employee Self-Service Portal]
+    end
+
+    %% ================= 3. APPLICATION SHELL & ROUTER =================
+    SUPER_DASH --> APP_ROUTER{Select Module from Navigation}
+    MGR_DASH --> APP_ROUTER
+    EMP_PORTAL --> APP_ROUTER
+
+    %% ================= 4. HR & WORKFORCE MODULE =================
+    subgraph HR_MOD["3. HR & WORKFORCE MANAGEMENT MODULE"]
+        direction TB
+        HR_NAV[HR Management Console] --> HR_BRANCH{Select HR Function}
+        
+        %% Employee Master
+        HR_BRANCH --> ONBOARD[Employee Onboarding]
+        ONBOARD --> EMP_FORM[Enter Personal Info, Docs, Branch, Dept & Post]
+        EMP_FORM --> BIO_MAP[Map Unique Biometric / Face Scanner Machine Code]
+        BIO_MAP --> SAVE_EMP[(Save Employee Profile in Database)]
+        
+        %% Face Scanner Excel Import Pipeline
+        HR_BRANCH --> UPLOAD_BIO[Upload Biometric Face Scanner Excel / CSV Dump]
+        UPLOAD_BIO --> PARSE_ROWS[Parse File: Machine Code, Date, In-Time, Out-Time]
+        PARSE_ROWS --> MATCH_CODE{Employee Machine Code Valid?}
+        MATCH_CODE -- No --> LOG_BIO_ERR[Log Mismatch into Attendance Import Log]
+        MATCH_CODE -- Yes --> EVAL_SHIFT[Compare In/Out against Assigned Shift Hours]
+        EVAL_SHIFT --> AUTO_STATUS{Evaluate Status Rules}
+        AUTO_STATUS -- In-Time > Shift Grace Window --> MARK_LATE[Status: LATE]
+        AUTO_STATUS -- Work Duration 4 to 8 Hours --> MARK_HALF[Status: HALF-DAY]
+        AUTO_STATUS -- Punch Timestamps Missing --> MARK_ABSENT[Status: ABSENT]
+        AUTO_STATUS -- Normal Working Hours --> MARK_PRESENT[Status: PRESENT]
+        
+        MARK_LATE --> UPSERT_ATTEND[(Upsert Daily Attendance Record)]
+        MARK_HALF --> UPSERT_ATTEND
+        MARK_ABSENT --> UPSERT_ATTEND
+        MARK_PRESENT --> UPSERT_ATTEND
+        
+        %% Leave Pipeline
+        HR_BRANCH --> LEAVE_ACTION[Leave Management]
+        LEAVE_ACTION --> SUBMIT_LEAVE[Employee Applies for Leave Request]
+        SUBMIT_LEAVE --> MGR_LEAVE_REV{Manager Approves Leave?}
+        MGR_LEAVE_REV -- No --> REJECT_LEAVE[Notify Rejection to Employee]
+        MGR_LEAVE_REV -- Yes --> UPDATE_LEAVE_BAL[Update Leave Records & Deduct Balance]
+        
+        %% Recruitment & Appraisals
+        HR_BRANCH --> TALENT[Recruitment & Appraisals]
+        TALENT --> RECRUIT_FLOW[Job Postings, Applicants & Offer Letters]
+        TALENT --> APPRAISAL_FLOW[Performance Ratings, Review Cycles & Feedback]
+        
+        UPSERT_ATTEND --> MONTHLY_HR_FEED[Consolidated Monthly HR Attendance Summary]
+        UPDATE_LEAVE_BAL --> MONTHLY_HR_FEED
+    end
+
+    %% ================= 5. PAYROLL MODULE =================
+    subgraph PAY_MOD["4. PAYROLL MANAGEMENT MODULE"]
+        direction TB
+        PAY_START[Payroll Engine Triggered] --> SELECT_PERIOD[Select Processing Period & Month]
+        SELECT_PERIOD --> LOAD_STRUCTURE[Load Base Salary Structures & Components]
+        MONTHLY_HR_FEED --> PULL_ATTEND_DATA[Pull Approved Attendance, Absents & Leaves]
+        LOAD_STRUCTURE --> PULL_ATTEND_DATA
+        PULL_ATTEND_DATA --> COMPUTE_PAY[Compute Gross Pay, Absents Deduction & Overtime]
+        COMPUTE_PAY --> COMPUTE_NET[Calculate Net Payable Salary]
+        COMPUTE_NET --> DRAFT_PAY_REVIEW{HR & Finance Manager Signoff?}
+        DRAFT_PAY_REVIEW -- Rejected --> ADJ_PAYROLL[Manual Fine/Bonus Adjustments]
+        ADJ_PAYROLL --> COMPUTE_PAY
+        DRAFT_PAY_REVIEW -- Approved --> FINALIZE_PAY[Finalize Payroll Run Batch]
+        FINALIZE_PAY --> LOCK_SNAPSHOT[(Save Immutable Historical Calculation Snapshot)]
+        LOCK_SNAPSHOT --> GEN_PAYSLIPS[Publish PDF Payslips to Employee Self-Service]
+        GEN_PAYSLIPS --> POST_PAY_EXPENSE[Post Total Salary Obligation to Accounts]
+    end
+
+    %% ================= 6. INVENTORY & WAREHOUSE MODULE =================
+    subgraph INV_MOD["5. INVENTORY & WAREHOUSE MANAGEMENT MODULE"]
+        direction TB
+        INV_NAV[Inventory Hub] --> ITEM_MASTER[Item Master: SKU, Reorder Threshold, Bins]
+        ITEM_MASTER --> MONITOR_STOCK{Stock Level < Reorder Level?}
+        MONITOR_STOCK -- Yes --> TRIGGER_REORDER[Trigger Purchase Reorder Requisition]
+        
+        %% Stock Issue Pipeline
+        INV_NAV --> RECV_ISSUE_REQ[Receive Material Issue Request from Task / Work Order]
+        RECV_ISSUE_REQ --> STORE_APPROVE{Store Manager Approves?}
+        STORE_APPROVE -- No --> REJ_STOCK_ISSUE[Reject & Notify Requester]
+        STORE_APPROVE -- Yes --> CHECK_AVAILABLE{Stock Available in Warehouse?}
+        CHECK_AVAILABLE -- No --> SHORTAGE_TRIGGER[Raise Shortage Alert to Purchase]
+        CHECK_AVAILABLE -- Yes --> DISPATCH_STOCK[Issue Stock: Log Qty, Project Tag & Recipient]
+        DISPATCH_STOCK --> UPDATE_STOCK_OUT[(Update Warehouse Balance: Stock Out)]
+        
+        %% Return Pipeline
+        UPDATE_STOCK_OUT --> MATERIAL_USAGE[Material In-Use at Project / Shop Floor]
+        MATERIAL_USAGE --> UNUSED_RETURN{Unused Material Returned?}
+        UNUSED_RETURN -- Yes --> STOCK_RETURN_LOG[Process Stock Return & Reverse Project Cost]
+        STOCK_RETURN_LOG --> UPDATE_STOCK_IN[(Update Warehouse Balance: Stock In)]
+        UNUSED_RETURN -- No --> CONSUMED_PERMANENT[Mark 100% Consumed Against Project]
+    end
+
+    %% ================= 7. PROCUREMENT CYCLE =================
+    subgraph PROC_MOD["6. PROCUREMENT & VENDOR MANAGEMENT MODULE"]
+        direction TB
+        TRIGGER_REORDER --> GEN_PR[Generate Purchase Requisition PR]
+        SHORTAGE_TRIGGER --> GEN_PR
+        GEN_PR --> APPRV_PR{Management Approves PR?}
+        APPRV_PR -- Yes --> ISSUE_PO[Issue Purchase Order PO to Vendor]
+        ISSUE_PO --> RECV_SHIPMENT[Receive Physical Shipment at Warehouse Gate]
+        RECV_SHIPMENT --> QC_INSPECT{Quality Control QC Passed?}
+        QC_INSPECT -- No --> RETURN_VENDOR[Reject Goods & Issue Vendor Debit Note]
+        QC_INSPECT -- Yes --> CONFIRM_GRN[Generate Goods Receipt Note GRN]
+        CONFIRM_GRN --> UPDATE_STOCK_IN
+        CONFIRM_GRN --> PUSH_GRN_ACCOUNTS[Send GRN to Accounts for 3-Way Match]
+    end
+
+    %% ================= 8. MANUFACTURING & PRODUCTION MODULE =================
+    subgraph MFG_MOD["7. MANUFACTURING & SHOP FLOOR EXECUTION MODULE"]
+        direction TB
+        MFG_NAV[Manufacturing Control] --> DEFINE_BOM[Maintain Bill of Materials BOM Recipes]
+        DEFINE_BOM --> WORK_CENTERS[Configure Work Centers, Machines & Hourly Rates]
+        WORK_CENTERS --> SCHED_MAINTENANCE[Machine Maintenance & Downtime Tracking]
+        
+        MFG_NAV --> CREATE_WO[Create Work Order: Planned Qty & Delivery Date]
+        CREATE_WO --> REQ_MFG_STOCK[Request Raw Materials from Inventory]
+        REQ_MFG_STOCK --> RECV_ISSUE_REQ
+        
+        DISPATCH_STOCK -. Material Released .-> EXECUTE_ROUTING[Execute Work Order Operations]
+        EXECUTE_ROUTING --> LOG_MACHINE_HOURS[Log Machine Running Hours, Downtime & Output]
+        LOG_MACHINE_HOURS --> IN_LINE_QC{In-Process Quality Check Passed?}
+        IN_LINE_QC -- Fail --> REWORK_SCRAP[Route to Rework or Log Waste Scrap Qty]
+        IN_LINE_QC -- Pass --> FINISH_GOODS[Complete Work Order: Receive Finished Goods]
+        FINISH_GOODS --> UPDATE_STOCK_IN
+        FINISH_GOODS --> CALC_PROD_COST[Compute Production Cost: Raw Material + Machine + Labor]
+    end
+
+    %% ================= 9. PROJECTS & TASK MANAGEMENT =================
+    subgraph PROJ_MOD["8. PROJECTS & TASK MANAGEMENT MODULE"]
+        direction TB
+        PROJ_NAV[Project Hub] --> CREATE_PROJECT[Create Project: Client, Deadline & Budget]
+        CREATE_PROJECT --> DEFINE_MILESTONES[Set Milestones & Project Phases]
+        DEFINE_MILESTONES --> ASSIGN_MEMBERS[Assign Project Manager & Team Members]
+        ASSIGN_MEMBERS --> CREATE_TASKS[Create Tasks & Subtasks with Priorities]
+        
+        CREATE_TASKS --> TASK_BOARD[Kanban Task Board: Todo, In-Progress, Review, Done]
+        TASK_BOARD --> WORK_ON_TASK[Team Updates Status & Logs Daily Timesheet Hours]
+        
+        %% Task Needs Material
+        TASK_BOARD --> TASK_NEEDS_MAT{Task Needs Material?}
+        TASK_NEEDS_MAT -- Yes --> REQ_TASK_STOCK[Raise Stock Issue Request for Task]
+        REQ_TASK_STOCK --> RECV_ISSUE_REQ
+        
+        WORK_ON_TASK --> TASK_REVIEW{Task Review Approved by PM?}
+        TASK_REVIEW -- No --> RETURN_TASK[Return for Revisions with Comments]
+        RETURN_TASK --> TASK_BOARD
+        TASK_REVIEW -- Yes --> MARK_TASK_DONE[Mark Task Complete]
+        MARK_TASK_DONE --> PROJ_PROGRESS_EVAL{All Milestones Complete?}
+        PROJ_PROGRESS_EVAL -- No --> TASK_BOARD
+        PROJ_PROGRESS_EVAL -- Yes --> CLOSE_PROJECT[Close Project & Compile Final Delivery Report]
+    end
+
+    %% ================= 10. ACCOUNTS & FINANCIALS =================
+    subgraph ACC_MOD["9. COMMERCIAL ACCOUNTS & GENERAL LEDGER MODULE"]
+        direction TB
+        ACC_NAV[Finance & Accounts Hub] --> RECV_VENDOR_BILL[Receive Vendor Bill]
+        PUSH_GRN_ACCOUNTS --> THREE_WAY_MATCH{3-Way Match: PO == GRN == Bill?}
+        RECV_VENDOR_BILL --> THREE_WAY_MATCH
+        THREE_WAY_MATCH -- Discrepancy Found --> FLAG_BILL[Flag Discrepancy & Halt Payment]
+        THREE_WAY_MATCH -- Perfect Match --> APPROVE_BILL[Approve Vendor Bill for Payment]
+        APPROVE_BILL --> EXECUTE_PAYMENT[Execute Payment Disbursement via Bank Account]
+        
+        %% Sales & Billing
+        CLOSE_PROJECT -. Deliverable Complete .-> GEN_INVOICE[Generate Customer Invoice]
+        ACC_NAV --> GEN_SO_INVOICE[Generate Invoice from Sales Order]
+        GEN_INVOICE --> SEND_INVOICE[Issue Invoice to Customer]
+        GEN_SO_INVOICE --> SEND_INVOICE
+        SEND_INVOICE --> RECV_CUSTOMER_PAY[Record Customer Payment Receipt]
+        
+        %% General Ledger & Reports
+        EXECUTE_PAYMENT --> POST_GL[(Post Journal Entry to General Ledger)]
+        RECV_CUSTOMER_PAY --> POST_GL
+        POST_PAY_EXPENSE --> POST_GL
+        CALC_PROD_COST -. COGS Valuation .-> POST_GL
+        
+        POST_GL --> TRIAL_BALANCE[Compile Trial Balance]
+        TRIAL_BALANCE --> FINANCIAL_STMTS[Generate P&L, Balance Sheet & Cash Flow Reports]
+    end
+
+    %% Router Connections
+    APP_ROUTER --> HR_NAV
+    APP_ROUTER --> PAY_START
+    APP_ROUTER --> INV_NAV
+    APP_ROUTER --> MFG_NAV
+    APP_ROUTER --> PROJ_NAV
+    APP_ROUTER --> ACC_NAV`;
+
+    let dbmlCode = `// Refer to file: manufacturing_erp_specification.md for the full 51-table DBML code.
+// Copy that DBML code directly into dbdiagram.io to generate interactive visual diagrams.`;
+
+    let currentView = 'flow';
+    const textarea = document.getElementById('code-box');
+    const outputDiv = document.getElementById('diagram-output');
+    const errorBox = document.getElementById('error-box');
+
+    function switchView(view) {
+      currentView = view;
+      document.getElementById('btn-flow').classList.toggle('active', view === 'flow');
+      document.getElementById('btn-db').classList.toggle('active', view === 'db');
+      
+      if (view === 'flow') {
+        document.getElementById('editor-title').innerText = 'Editing: Master Manufacturing Flowchart (Mermaid)';
+        textarea.value = flowchartSource;
+        renderCurrent();
+      } else {
+        document.getElementById('editor-title').innerText = 'Viewing: Database Schema Information';
+        textarea.value = '// Open manufacturing_erp_specification.md for the complete 51-table DBML code.\\n// Paste it into dbdiagram.io to see the interactive diagram.';
+        errorBox.style.display = 'none';
+        outputDiv.innerHTML = '<div class="dbml-preview"><h3>Complete 51-Table DBML Schema Available</h3><br><p>The complete database code has been compiled into <b>manufacturing_erp_specification.md</b>.</p><br><p>To view the visual diagram:</p><ol style="padding-left: 20px;"><li>Open <a href="https://dbdiagram.io" target="_blank" style="color:#38bdf8;">dbdiagram.io</a></li><li>Copy Section 5 of <b>manufacturing_erp_specification.md</b></li><li>Paste it on dbdiagram.io to generate the official interactive ER diagram!</li></ol></div>';
+      }
+    }
+
+    async function renderCurrent() {
+      if (currentView !== 'flow') return;
+      errorBox.style.display = 'none';
+      outputDiv.innerHTML = '';
+      try {
+        const id = 'svg-render-' + Math.round(Math.random() * 10000);
+        const { svg } = await mermaid.render(id, textarea.value);
+        outputDiv.innerHTML = svg;
+      } catch (err) {
+        errorBox.style.display = 'block';
+        errorBox.innerText = 'Render Error: ' + err.message;
+      }
+    }
+
+    // Initial load
+    textarea.value = flowchartSource;
+    renderCurrent();
+  </script>
+</body>
+</html>

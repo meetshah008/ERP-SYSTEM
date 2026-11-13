@@ -1,0 +1,20 @@
+.idea/
+scratch/
+erp_frontend (2).zip
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+
+# Node.js
+node_modules/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enterprise ERP - Architecture & Flowchart Download Center</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; min-height: 100vh; padding: 24px; }
+    header { 
+      background: #1e293b; 
+      border: 1px solid #334155; 
+      border-radius: 12px; 
+      padding: 20px 30px; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      max-width: 1400px; 
+      margin: 0 auto 24px auto; 
+    }
+    header h1 { font-size: 1.3rem; color: #38bdf8; font-weight: 700; }
+    .badge { background: #0284c7; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; margin-left: 8px; }
+    .btn-group { display: flex; gap: 12px; }
+    .btn { 
+      background: #0284c7; 
+      color: white; 
+      border: none; 
+      padding: 10px 18px; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-weight: 600; 
+      font-size: 0.88rem; 
+      display: flex; 
+      align-items: center; 
+      gap: 8px; 
+      transition: all 0.2s; 
+    }
+    .btn:hover { background: #0369a1; }
+    .btn-green { background: #10b981; }
+    .btn-green:hover { background: #059669; }
+    .card { 
+      background: #1e293b; 
+      border: 1px solid #334155; 
+      border-radius: 12px; 
+      padding: 24px; 
+      max-width: 1400px; 
+      margin: 0 auto 24px auto; 
+    }
+    .card h2 { font-size: 1.15rem; color: #38bdf8; margin-bottom: 12px; }
+    .card p { font-size: 0.92rem; color: #94a3b8; line-height: 1.6; margin-bottom: 16px; }
+    .platform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+    .platform-box { background: #090d16; border: 1px solid #334155; border-radius: 8px; padding: 18px; }
+    .platform-box h3 { font-size: 1rem; color: #38bdf8; margin-bottom: 10px; }
+    .platform-box p { font-size: 0.88rem; color: #cbd5e1; line-height: 1.6; margin-bottom: 8px; }
+    #diagram-wrap { 
+      width: 100%; 
+      overflow: auto; 
+      background: #090d16; 
+      border: 1px solid #334155; 
+      border-radius: 8px; 
+      padding: 30px; 
+      display: flex; 
+      justify-content: center; 
+      min-height: 500px; 
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Enterprise Manufacturing ERP <span class="badge">Architecture & Flowchart</span></h1>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-green" onclick="downloadFlowchartSVG()">
+        ⬇️ 1. Download SVG (Vector Image)
+      </button>
+      <button class="btn" onclick="downloadDirectPNG()">
+        ⬇️ 2. Download HD PNG Image
+      </button>
+      <button class="btn" style="background:#6366f1;" onclick="window.print()">
+        🖨️ 3. Save as PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- Platform Strategy Card (Simplified & Focused on Companies) -->
+  <div class="card">
+    <h2>Dual-Platform ERP Solution for Manufacturing Companies</h2>
+    <p>A unified ERP ecosystem built to digitalize complete manufacturing, operational, and workforce workflows across two optimized interfaces:</p>
+    
+    <div class="platform-grid">
+      <div class="platform-box">
+        <h3>1. Web & Desktop Application</h3>
+        <p><b>Target:</b> Manufacturing Companies & Enterprise Businesses.</p>
+        <p><b>Focus:</b> Complete operational management, production planning (BOM), inventory control, 3-way accounts matching, bulk biometric attendance processing, and executive reporting on a desktop-optimized dashboard.</p>
+      </div>
+
+      <div class="platform-box">
+        <h3>2. Mobile Application</h3>
+        <p><b>Target:</b> Factory Floor, On-Site & Field Workforce Operations.</p>
+        <p><b>Focus:</b> Real-time shop-floor execution, machine operation logs, quick raw material requests, task updates, and employee self-service (attendance & leaves) on a mobile-first interface.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Flowchart Card with Export -->
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h2>Master Unified Architecture & Process Flowchart</h2>
+      <span style="font-size:0.85rem; color:#94a3b8;">Click buttons above to download this diagram</span>
+    </div>
+    
+    <div id="diagram-wrap">
+      <div class="mermaid" id="mermaid-flowchart">
+flowchart TB
+
+    %% ================= 1. CLIENT ENTRY & DUAL-PLATFORM DETECTION =================
+    subgraph CLIENT_ENTRY["1. CLIENT ACCESS & DEVICE ROUTING"]
+        direction TB
+        START([User Launches ERP Application]) --> DETECT_DEVICE{Detect Client Device}
+        DETECT_DEVICE -- Desktop / Web Browser --> WEB_CLIENT[Launch Web Portal Viewport]
+        DETECT_DEVICE -- Mobile / Tablet Device --> MOB_CLIENT[Launch Mobile App Viewport]
+        
+        WEB_CLIENT --> CHECK_CO{Company Configured?}
+        MOB_CLIENT --> CHECK_CO
+        
+        CHECK_CO -- No: First Time Setup --> WIZARD[Web Company Setup Wizard: Legal Name, GST, FY, Super Admin]
+        WIZARD --> LOGIN_SCREEN
+        CHECK_CO -- Yes --> LOGIN_SCREEN[Display Login Screen]
+    end
+
+    %% ================= 2. AUTHENTICATION & ACCESS ENGINE =================
+    subgraph AUTH_ENGINE["2. AUTHENTICATION & ROLE GOVERNANCE"]
+        direction TB
+        LOGIN_SCREEN --> INPUT_AUTH[Enter Email & Master Password]
+        INPUT_AUTH --> VERIFY_CREDS{Validate Credentials}
+        VERIFY_CREDS -- Invalid --> SHOW_ERROR[Show Error Alert & Lock Attempts]
+        SHOW_ERROR --> LOGIN_SCREEN
+        VERIFY_CREDS -- Valid --> MFA_CHECK{2FA Enabled?}
+        MFA_CHECK -- Yes --> ENTER_OTP[Enter Verification OTP]
+        ENTER_OTP --> ISSUE_TOKEN[Issue Secure JWT Token & Role Claims]
+        MFA_CHECK -- No --> ISSUE_TOKEN
+        
+        ISSUE_TOKEN --> ROLE_BRANCH{Evaluate Role & Device Type}
+    end
+
+    %% ================= 3. WEB PORTAL WORKFLOW (MANAGEMENT TIER) =================
+    subgraph WEB_PORTAL["3. WEB MANAGEMENT PORTAL (Super Admin & Module Managers)"]
+        direction TB
+        ROLE_BRANCH -- Web: Super Admin --> WEB_ADMIN_DASH[Super Admin Global Command Center]
+        ROLE_BRANCH -- Web: Module Manager --> WEB_MGR_DASH[Department Operations Console]
+        
+        WEB_ADMIN_DASH --> SYS_CONFIG[Manage Branches, Multi-Warehouse & Role Permissions]
+        WEB_ADMIN_DASH --> AUDIT_VIEW[Review Real-Time Audit Logs & P&L Statements]
+        
+        %% Web HR
+        WEB_MGR_DASH -- HR Management --> WEB_HR[HR Management Console]
+        WEB_HR --> UPLOAD_EXCEL[Upload Biometric Face Scanner Excel Sheet]
+        UPLOAD_EXCEL --> PARSE_EXCEL[Background Parser: Calculate Late, Half-Day & Present]
+        PARSE_EXCEL --> HR_DB_SAVE[(Update Attendance & Employee Records)]
+        WEB_HR --> LEAVE_APPROVALS[Process Team Leave Approval Requests]
+        
+        %% Web Manufacturing
+        WEB_MGR_DASH -- Production Management --> WEB_MFG[Manufacturing & Shop Floor Center]
+        WEB_MFG --> DEFINE_BOM[Maintain Multi-Level BOM Recipes & Routings]
+        DEFINE_BOM --> CREATE_WO[Schedule Production Work Orders]
+        CREATE_WO --> PUSH_WO_FLOOR[Dispatch Operations to Work Centers]
+        
+        %% Web Inventory & Purchase
+        WEB_MGR_DASH -- Supply Chain --> WEB_INV[Inventory & Procurement Hub]
+        WEB_INV --> REORDER_CHECK{Stock < Reorder Level?}
+        REORDER_CHECK -- Yes --> ISSUE_PO[Generate Purchase Order to Vendor]
+        ISSUE_PO --> RECV_GRN[Inspect Delivery & Confirm GRN QC]
+        
+        %% Web Accounts
+        WEB_MGR_DASH -- Accounts & Finance --> WEB_ACC[Finance & Commercial Ledger]
+        RECV_GRN --> THREE_WAY_MATCH{3-Way Match: PO == GRN == Bill}
+        THREE_WAY_MATCH -- Matched --> PAY_VENDOR[Disburse Vendor Payment via Bank]
+        WEB_ACC --> GEN_INVOICE[Issue Customer Invoices & Ledger Entries]
+    end
+
+    %% ================= 4. MOBILE APP WORKFLOW (OPERATORS & STAFF) =================
+    subgraph MOBILE_PORTAL["4. MOBILE APPLICATION (Floor Operators & Field Staff)"]
+        direction TB
+        ROLE_BRANCH -- Mobile: Operator / Staff --> MOB_DASH[Mobile Touch Home Dashboard]
+        
+        %% Mobile Features
+        MOB_DASH --> MOB_ATTEND[Self-Service Attendance Punch]
+        MOB_DASH --> MOB_LEAVES[Apply for Casual / Sick Leave]
+        MOB_DASH --> MOB_PAYSLIP[Download Monthly PDF Payslips]
+        
+        %% Mobile Shop Floor Execution
+        MOB_DASH --> MOB_WO_EXEC[My Machine Work Orders]
+        PUSH_WO_FLOOR -. Sync to Operator App .-> MOB_WO_EXEC
+        MOB_WO_EXEC --> LOG_PROD[Log Machine Hours, Output Quantity & Scrap]
+        LOG_PROD --> PROD_LOG_DB[(Save Production Execution Log)]
+        
+        %% Mobile Project & Tasks
+        MOB_DASH --> MOB_TASKS[My Assigned Project Tasks]
+        MOB_TASKS --> UPDATE_TASK_STATUS[Move Kanban Status: In Progress / Done]
+        UPDATE_TASK_STATUS --> LOG_TIMESHEET[Submit Daily Task Timesheet Hours]
+        
+        %% Mobile Stock Requisition
+        MOB_TASKS --> NEED_MATERIAL{Need Raw Materials?}
+        NEED_MATERIAL -- Yes --> MOB_REQ_STOCK[Submit Mobile Material Requisition]
+        MOB_REQ_STOCK -. Trigger Approval Alert .-> WEB_INV
+    end
+
+    %% ================= 5. SHARED PERSISTENCE & SYNC =================
+    HR_DB_SAVE --> CENTRAL_DB[(MySQL Relational Database: 51 Tables)]
+    PROD_LOG_DB --> CENTRAL_DB
+    PAY_VENDOR --> CENTRAL_DB
+    GEN_INVOICE --> CENTRAL_DB
+    LOG_TIMESHEET --> CENTRAL_DB
+      </div>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+
+    function downloadFlowchartSVG() {
+      const svg = document.querySelector("#diagram-wrap svg");
+      if (!svg) {
+        alert("Please wait 2 seconds for diagram to render.");
+        return;
+      }
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = svgUrl;
+      downloadLink.download = "ERP_Master_Architecture_Flowchart.svg";
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(svgUrl);
+    }
+
+    function downloadDirectPNG() {
+      const svg = document.querySelector("#diagram-wrap svg");
+      if (!svg) {
+        alert("Please wait 2 seconds for diagram to render.");
+        return;
+      }
+
+      const clonedSvg = svg.cloneNode(true);
+      const bbox = svg.getBoundingClientRect();
+      const width = Math.max(bbox.width, 1800);
+      const height = Math.max(bbox.height, 2200);
+
+      clonedSvg.setAttribute("width", width);
+      clonedSvg.setAttribute("height", height);
+
+      const svgData = new XMLSerializer().serializeToString(clonedSvg);
+      const svgBase64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width * 1.5;
+      canvas.height = height * 1.5;
+      const ctx = canvas.getContext("2d");
+
+      const img = new Image();
+      img.onload = function() {
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        try {
+          const pngUrl = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.href = pngUrl;
+          downloadLink.download = "ERP_Master_Architecture_Flowchart_HD.png";
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        } catch (e) {
+          alert("Downloading crystal-clear SVG instead!");
+          downloadFlowchartSVG();
+        }
+      };
+      img.onerror = function() {
+        downloadFlowchartSVG();
+      };
+      img.src = svgBase64;
+    }
+  </script>
+</body>
+</html>
