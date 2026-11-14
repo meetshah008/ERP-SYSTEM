@@ -3,7 +3,7 @@ import '../theme/theme_controller.dart';
 
 /// A pure procedural tropical botanical background that supports both
 /// luxurious Dark Forest mode and Fresh Clean Light Mint mode.
-class BotanicalBackground extends StatelessWidget {
+class BotanicalBackground extends StatefulWidget {
   final Widget child;
   final bool showThemeToggle;
 
@@ -14,16 +14,43 @@ class BotanicalBackground extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    // Phones get a calm neutral canvas. The botanical artwork is reserved for
-    // tablets/desktop so small screens stay readable and uncluttered.
-    if (MediaQuery.sizeOf(context).width < 720) {
-      return _MobileCanvas(
-        showThemeToggle: showThemeToggle,
-        child: child,
-      );
-    }
+  State<BotanicalBackground> createState() => _BotanicalBackgroundState();
+}
 
+class _BotanicalBackgroundState extends State<BotanicalBackground> {
+  /// Latest pointer position. Repainting is driven by this notifier so the
+  /// whole page does not rebuild on every mouse move.
+  final ValueNotifier<Offset?> _pointer = ValueNotifier<Offset?>(null);
+
+  @override
+  void dispose() {
+    _pointer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 720;
+
+    return MouseRegion(
+      opaque: false,
+      onHover: (event) => _pointer.value = event.localPosition,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) => _pointer.value = event.localPosition,
+        onPointerMove: (event) => _pointer.value = event.localPosition,
+        child: isMobile
+            ? _MobileCanvas(
+                showThemeToggle: widget.showThemeToggle,
+                pointer: _pointer,
+                child: widget.child,
+              )
+            : _buildDesktopCanvas(),
+      ),
+    );
+  }
+
+  Widget _buildDesktopCanvas() {
     return ValueListenableBuilder<bool>(
       valueListenable: ThemeController.isDarkMode,
       builder: (context, isDark, _) {
@@ -83,11 +110,23 @@ class BotanicalBackground extends StatelessWidget {
               ),
             ),
 
+            // 3b. Soft spotlight that follows the pointer
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _PointerGlowPainter(
+                    pointer: _pointer,
+                    isDark: isDark,
+                  ),
+                ),
+              ),
+            ),
+
             // 4. Content (Child)
-            Positioned.fill(child: child),
+            Positioned.fill(child: widget.child),
 
             // 5. Floating Theme Toggle Pill (Top-Right)
-            if (showThemeToggle)
+            if (widget.showThemeToggle)
               Positioned(
                 top: 24,
                 right: 28,
@@ -318,10 +357,12 @@ class _BotanicalFoliagePainter extends CustomPainter {
 class _MobileCanvas extends StatelessWidget {
   final Widget child;
   final bool showThemeToggle;
+  final ValueNotifier<Offset?> pointer;
 
   const _MobileCanvas({
     required this.child,
     required this.showThemeToggle,
+    required this.pointer,
   });
 
   @override
@@ -362,6 +403,16 @@ class _MobileCanvas extends StatelessWidget {
                         const Color(0xFF059669).withValues(alpha: 0.0),
                       ],
                     ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _PointerGlowPainter(
+                    pointer: pointer,
+                    isDark: isDark,
                   ),
                 ),
               ),
@@ -429,4 +480,53 @@ class _MobileCanvas extends StatelessWidget {
       },
     );
   }
+}
+
+/// Soft emerald spotlight drawn under the content that follows the pointer.
+/// Repaints come from [pointer], so moving the mouse never rebuilds the page.
+class _PointerGlowPainter extends CustomPainter {
+  final ValueNotifier<Offset?> pointer;
+  final bool isDark;
+
+  _PointerGlowPainter({
+    required this.pointer,
+    required this.isDark,
+  }) : super(repaint: pointer);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = pointer.value ?? Offset(size.width * 0.5, size.height * 0.28);
+    final radius = (size.shortestSide * 0.42).clamp(170.0, 420.0);
+    final color = isDark ? const Color(0xFF10B981) : const Color(0xFF059669);
+    final alpha = isDark ? 0.16 : 0.10;
+
+    final glow = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          color.withValues(alpha: alpha),
+          color.withValues(alpha: alpha * 0.45),
+          color.withValues(alpha: 0),
+        ],
+        stops: const [0.0, 0.45, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+
+    canvas.drawCircle(center, radius, glow);
+
+    // Tiny bright core for a subtle "spotlight" feel.
+    final coreColor = isDark ? Colors.white : const Color(0xFF34D399);
+    final core = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          coreColor.withValues(alpha: isDark ? 0.07 : 0.05),
+          coreColor.withValues(alpha: 0),
+        ],
+      ).createShader(
+        Rect.fromCircle(center: center, radius: radius * 0.28),
+      );
+    canvas.drawCircle(center, radius * 0.28, core);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PointerGlowPainter oldDelegate) =>
+      oldDelegate.isDark != isDark;
 }

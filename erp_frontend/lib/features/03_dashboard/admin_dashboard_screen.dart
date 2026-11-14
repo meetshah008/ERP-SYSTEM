@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../02_auth/login_screen.dart';
@@ -12,6 +13,7 @@ import '../../core/theme/theme_controller.dart';
 import '../04_hr_module/leave_management_screen.dart';
 import '../../core/widgets/animated_donut_chart.dart';
 import '../../core/widgets/mobile_ui.dart';
+import '../../core/widgets/mobile_carousel.dart';
 import '../05_tasks/project_tasks_screen.dart';
 import '../04_hr_module/employee_details_screen.dart';
 import '../04_hr_module/salary_increment_screen.dart';
@@ -34,9 +36,15 @@ class AdminDashboardScreen extends StatefulWidget {
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+class _AdminDashboardScreenState extends State<AdminDashboardScreen>
+    with SingleTickerProviderStateMixin {
   // Kaunsa tab abhi active hai
   String _selectedMenu = 'Dashboard';
+
+  // Blur-out transition between bottom-nav tabs (mobile only).
+  late final AnimationController _tabBlurController;
+  String? _pendingMenu;
+  static const double _tabBlurSigma = 20;
 
   // Backend se aane wala live staff count
   int _totalEmployees = 0;
@@ -59,6 +67,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
+
+    _tabBlurController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    )..addStatusListener(_onTabBlurStatus);
+
     _loadPermissions(); // 👈 Pehle user ki permissions load karein
     _fetchLiveStats();
     _fetchNotifications();
@@ -425,23 +439,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _onBottomNavTapped(int index) {
-    setState(() {
-      switch (index) {
-        case 0:
-          _selectedMenu = 'Dashboard';
-          break;
-        case 1:
-          _selectedMenu = 'HR & Employees';
-          _fetchLiveStats(); // 👈 Tab click karte hi turant database se fresh employees le aayega!
-          break;
-        case 2:
-          _selectedMenu = 'Projects & Tasks';
-          break;
-        case 3:
-          _selectedMenu = 'Settings & Logs';
-          break;
-      }
-    });
+    // Ignore extra taps while the outgoing screen is still blurring out.
+    if (_tabBlurController.isAnimating) return;
+    HapticFeedback.selectionClick();
+
+    String target;
+    switch (index) {
+      case 0:
+        target = 'Dashboard';
+        break;
+      case 1:
+        target = 'HR & Employees';
+        break;
+      case 2:
+        target = 'Projects & Tasks';
+        break;
+      case 3:
+      default:
+        target = 'Settings & Logs';
+        break;
+    }
+
+    // Tapping the already-active tab should not replay the transition.
+    if (target == _selectedMenu) return;
+
+    // Keep the existing tab side effects: HR pulls fresh employees immediately
+    // so the data is ready by the time the blur finishes.
+    if (index == 1) _fetchLiveStats();
+
+    // Only swap the screen after the blur-out completes (hard cut).
+    _pendingMenu = target;
+    _tabBlurController.forward(from: 0);
+  }
+
+  void _onTabBlurStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) return;
+
+    final next = _pendingMenu;
+    _pendingMenu = null;
+    if (next != null) {
+      setState(() => _selectedMenu = next);
+    }
+    // New screen starts fully sharp.
+    _tabBlurController.value = 0;
   }
   @override
   Widget build(BuildContext context) {
@@ -452,36 +492,48 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return ValueListenableBuilder<bool>(
       valueListenable: ThemeController.isDarkMode,
       builder: (context, isDark, _) {
-        return Scaffold(
-          extendBody: !isDesktop,
-          backgroundColor: Colors.transparent,
-          body: BotanicalBackground(
-            showThemeToggle: isDesktop,
-            child: Column(
-              children: [
-                // Mobile top bar for every tab except the dashboard (which
-                // carries its own greeting header).
-                if (!isDesktop && !isDashboard) _buildMobileHeader(isDark),
+        final body = BotanicalBackground(
+          showThemeToggle: isDesktop,
+          child: Column(
+            children: [
+              // Mobile top bar for every tab except the dashboard (which
+              // carries its own greeting header).
+              if (!isDesktop && !isDashboard) _buildMobileHeader(isDark),
 
-                // Main body area
-                Expanded(
-                  child: Row(
-                    children: [
-                      // Desktop: frosted glass sidebar
-                      if (isDesktop)
-                        SizedBox(
-                          width: 270,
-                          child: _buildDesktopSidebar(),
-                        ),
+              // Main body area
+              Expanded(
+                child: Row(
+                  children: [
+                    // Desktop: frosted glass sidebar
+                    if (isDesktop)
+                      SizedBox(
+                        width: 270,
+                        child: _buildDesktopSidebar(),
+                      ),
 
-                      // Center workspace
-                      Expanded(
-                        child: Column(
-                          children: [
-                            if (isDesktop) _buildDesktopHeader(isDark),
-                            Expanded(
+                    // Center workspace
+                    Expanded(
+                      child: Column(
+                        children: [
+                          if (isDesktop) _buildDesktopHeader(isDark),
+                          Expanded(
+                            child: RefreshIndicator(
+                              color: MobilePalette.emerald,
+                              backgroundColor: isDark
+                                  ? const Color(0xFF111C2E)
+                                  : Colors.white,
+                              displacement: 26,
+                              onRefresh: () async {
+                                await Future.wait([
+                                  _fetchLiveStats(),
+                                  _fetchNotifications(),
+                                ]);
+                              },
                               child: SingleChildScrollView(
-                                physics: const BouncingScrollPhysics(),
+                                physics:
+                                    const AlwaysScrollableScrollPhysics(
+                                  parent: BouncingScrollPhysics(),
+                                ),
                                 padding: EdgeInsets.fromLTRB(
                                   isDesktop ? 22.0 : (isDashboard ? 0.0 : 16.0),
                                   isDesktop ? 22.0 : (isDashboard ? 0.0 : 8.0),
@@ -491,19 +543,50 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 child: _buildSelectedTabContent(isDesktop),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        );
+
+        return Scaffold(
+          extendBody: !isDesktop,
+          backgroundColor: Colors.transparent,
+          body: isDesktop ? body : _buildTabBlurWrapper(body),
 
           // 📱 Floating bottom navigation (mobile only)
           bottomNavigationBar:
               isDesktop ? null : _buildMobileBottomNav(isDark),
+        );
+      },
+    );
+  }
+
+  /// Blurs the outgoing mobile body (everything above the bottom nav) with an
+  /// ease-in Gaussian blur, then lets the tab swap happen as a hard cut.
+  Widget _buildTabBlurWrapper(Widget body) {
+    return AnimatedBuilder(
+      animation: _tabBlurController,
+      child: body,
+      builder: (context, child) {
+        final sigma = _tabBlurController.value * _tabBlurSigma;
+        return IgnorePointer(
+          ignoring: _tabBlurController.isAnimating,
+          child: sigma <= 0.01
+              ? child!
+              : ImageFiltered(
+                  imageFilter: ImageFilter.blur(
+                    sigmaX: sigma,
+                    sigmaY: sigma,
+                    tileMode: TileMode.decal,
+                  ),
+                  child: child,
+                ),
         );
       },
     );
@@ -1139,207 +1222,153 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
         const SizedBox(height: 18),
 
-        // 2. HERO COMMAND CENTER CARD
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: MobileGlassCard(
+        // 2. AUTO-SCROLLING HERO CAROUSEL (plant highlights)
+        MobileReveal(
+          child: MobileHeroCarousel(
             isDark: isDark,
-            gradient: MobilePalette.heroGradient(isDark),
-            radius: 20,
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-            border: Border.all(
-              color: MobilePalette.border(isDark),
-            ),
-            boxShadow: MobilePalette.softShadow(isDark),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    MobileLivePill(label: 'LIVE', isDark: isDark),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.05)
-                              : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: MobilePalette.border(isDark),
+            slides: _buildMobileHeroSlides(isDark),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // 3. COMPACT LIVE COMMAND CENTER
+        MobileReveal(
+          delayMs: 80,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: MobileGlassCard(
+              isDark: isDark,
+              gradient: MobilePalette.heroGradient(isDark),
+              radius: 20,
+              padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+              border: Border.all(
+                color: MobilePalette.border(isDark),
+              ),
+              boxShadow: MobilePalette.softShadow(isDark),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      MobileLivePill(label: 'LIVE', isDark: isDark),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Command Center',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: textTitle,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
                           ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.factory_rounded,
-                              size: 11,
-                              color: isDark
-                                  ? const Color(0xFFA7F3D0)
-                                  : MobilePalette.emeraldDeep,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                widget.companyName.toUpperCase(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: isDark
-                                      ? const Color(0xFFA7F3D0)
-                                      : MobilePalette.emeraldDeep,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
+                      ),
+                      const SizedBox(width: 8),
+                      _buildMobileProgressRing(
+                        value: taskProgress,
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    height: 1,
+                    color: MobilePalette.hairline(isDark),
+                  ),
+                  const SizedBox(height: 11),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMobileHeroStat(
+                          icon: Icons.people_alt_rounded,
+                          value: _isLoadingStats ? '—' : '$_totalEmployees',
+                          label: 'Team',
+                          color: MobilePalette.blue,
+                          isDark: isDark,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Command Center',
-                            style: TextStyle(
-                              color: textTitle,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.5,
-                              height: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            'Everything happening across your plant, in one glance.',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: textSub,
-                              fontSize: 12.5,
-                              height: 1.4,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
+                      _buildMobileHeroDivider(isDark),
+                      Expanded(
+                        child: _buildMobileHeroStat(
+                          icon: Icons.task_alt_rounded,
+                          value:
+                              _isLoadingStats ? '—' : '$_pendingTasksCount',
+                          label: 'Pending',
+                          color: MobilePalette.sky,
+                          isDark: isDark,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    _buildMobileProgressRing(
-                      value: taskProgress,
-                      isDark: isDark,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  height: 1,
-                  color: MobilePalette.hairline(isDark),
-                ),
-                const SizedBox(height: 13),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildMobileHeroStat(
-                        icon: Icons.people_alt_rounded,
-                        value: _isLoadingStats ? '—' : '$_totalEmployees',
-                        label: 'Team',
-                        color: MobilePalette.blue,
-                        isDark: isDark,
+                      _buildMobileHeroDivider(isDark),
+                      Expanded(
+                        child: _buildMobileHeroStat(
+                          icon: Icons.assignment_turned_in_rounded,
+                          value: _isLoadingStats ? '—' : '$_totalProjects',
+                          label: 'Projects',
+                          color: MobilePalette.violet,
+                          isDark: isDark,
+                        ),
                       ),
-                    ),
-                    _buildMobileHeroDivider(isDark),
-                    Expanded(
-                      child: _buildMobileHeroStat(
-                        icon: Icons.task_alt_rounded,
-                        value: _isLoadingStats ? '—' : '$_pendingTasksCount',
-                        label: 'Pending',
-                        color: MobilePalette.sky,
-                        isDark: isDark,
-                      ),
-                    ),
-                    _buildMobileHeroDivider(isDark),
-                    Expanded(
-                      child: _buildMobileHeroStat(
-                        icon: Icons.assignment_turned_in_rounded,
-                        value: _isLoadingStats ? '—' : '$_totalProjects',
-                        label: 'Projects',
-                        color: MobilePalette.violet,
-                        isDark: isDark,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.bolt_rounded,
-                      size: 13,
-                      color: isDark
-                          ? MobilePalette.mint
-                          : MobilePalette.emeraldDeep,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Task completion',
-                      style: TextStyle(
-                        color: textSub,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${(taskProgress * 100).round()}%',
-                      style: TextStyle(
+                    ],
+                  ),
+                  const SizedBox(height: 11),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.bolt_rounded,
+                        size: 12,
                         color: isDark
                             ? MobilePalette.mint
                             : MobilePalette.emeraldDeep,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Task completion',
+                        style: TextStyle(
+                          color: textSub,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${(taskProgress * 100).round()}%',
+                        style: TextStyle(
+                          color: isDark
+                              ? MobilePalette.mint
+                              : MobilePalette.emeraldDeep,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: taskProgress,
+                      minHeight: 5,
+                      backgroundColor: isDark
+                          ? Colors.white.withValues(alpha: 0.09)
+                          : const Color(0xFFE2E8F0),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        MobilePalette.emerald,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: taskProgress,
-                    minHeight: 6,
-                    backgroundColor: isDark
-                        ? Colors.white.withValues(alpha: 0.09)
-                        : const Color(0xFFE2E8F0),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      MobilePalette.emerald,
-                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
         const SizedBox(height: 22),
 
-        // 3. QUICK LAUNCH GRID
+        // 4. QUICK LAUNCH GRID
         MobileSectionHeader(
           title: 'Quick Launch',
-          subtitle: 'One tap to every module',
+          subtitle: 'Your daily shortcuts, one tap away',
           isDark: isDark,
         ),
         const SizedBox(height: 10),
@@ -1349,7 +1378,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
         const SizedBox(height: 22),
 
-        // 4. LIVE OVERVIEW
+        // 5. MODULE IMAGE RAIL (horizontal image scrolling)
+        _buildMobileModuleRail(isDark),
+
+        // 6. LIVE OVERVIEW
         MobileSectionHeader(
           title: 'Live Overview',
           subtitle: 'Synced with your plant right now',
@@ -1366,6 +1398,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   isDark: isDark,
                   title: 'Pending Tasks',
                   value: _isLoadingStats ? '—' : '$_pendingTasksCount',
+                  countValue: _isLoadingStats ? null : _pendingTasksCount,
                   subtitle: totalTasks > 0
                       ? '$doneTasks of $totalTasks completed'
                       : 'No tasks created yet',
@@ -1382,6 +1415,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   isDark: isDark,
                   title: 'Projects',
                   value: _isLoadingStats ? '—' : '$_totalProjects',
+                  countValue: _isLoadingStats ? null : _totalProjects,
                   subtitle: _totalProjects > 0
                       ? '$_completedProjects delivered • $_pendingProjects active'
                       : 'No projects created yet',
@@ -1414,11 +1448,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             isDark: isDark,
           ),
           const SizedBox(height: 10),
+          _buildMobileTeamStories(isDark),
+          const SizedBox(height: 8),
           _buildMobileTeamSpotlight(isDark),
           const SizedBox(height: 22),
         ],
 
-        // 6. SECURITY / ROLE FOOTER
+        // 7. SECURITY / ROLE FOOTER
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: MobileGlassCard(
@@ -1555,6 +1591,297 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ],
       ),
     );
+  }
+
+  // ================= 🖼️ SWIPEABLE IMAGE HIGHLIGHTS =================
+  List<MobileHeroSlide> _buildMobileHeroSlides(bool isDark) {
+    final slides = <MobileHeroSlide>[];
+
+    if (_hasPermission('tasks_view')) {
+      slides.add(
+        MobileHeroSlide(
+          imageUrl:
+              'https://images.unsplash.com/photo-1565043666747-69f6646db940?auto=format&fit=crop&w=1000&q=70',
+          eyebrow: 'Live delivery',
+          title: 'Projects in motion',
+          subtitle:
+              'Active builds, deadlines and field progress — updated the moment your team updates it.',
+          metric: _isLoadingStats ? '—' : '$_pendingTasksCount',
+          metricLabel: 'open tasks',
+          icon: Icons.rocket_launch_rounded,
+          accent: MobilePalette.sky,
+          onTap: () => setState(() => _selectedMenu = 'Projects & Tasks'),
+        ),
+      );
+    }
+
+    if (_hasAnyHrAccess) {
+      slides.add(
+        MobileHeroSlide(
+          imageUrl:
+              'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1000&q=70',
+          eyebrow: 'People pulse',
+          title: 'Your team, connected',
+          subtitle:
+              'Rosters, attendance and appraisals living together in one calm workspace.',
+          metric: _isLoadingStats ? '—' : '$_totalEmployees',
+          metricLabel: 'on roster',
+          icon: Icons.groups_rounded,
+          accent: MobilePalette.blue,
+          onTap: () => setState(() => _selectedMenu = 'HR & Employees'),
+        ),
+      );
+    }
+
+    if (_hasPermission('manufacturing_view_bom')) {
+      slides.add(
+        MobileHeroSlide(
+          imageUrl:
+              'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=1000&q=70',
+          eyebrow: 'Shop floor',
+          title: 'Production never sleeps',
+          subtitle:
+              'Bill of materials and work orders flowing through every line, in real time.',
+          metric: _isLoadingStats ? '—' : '$_totalProjects',
+          metricLabel: 'in build',
+          icon: Icons.precision_manufacturing_rounded,
+          accent: MobilePalette.amber,
+          onTap: () =>
+              setState(() => _selectedMenu = 'Manufacturing & BOM'),
+        ),
+      );
+    }
+
+    if (_hasPermission('inventory_view_stock')) {
+      slides.add(
+        MobileHeroSlide(
+          imageUrl:
+              'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1000&q=70',
+          eyebrow: 'Stock health',
+          title: 'Warehouse at a glance',
+          subtitle:
+              'Raw materials, finished goods and reorder signals — synced across every shelf.',
+          metric: 'LIVE',
+          metricLabel: 'stock sync',
+          icon: Icons.inventory_2_rounded,
+          accent: const Color(0xFF0D9488),
+          onTap: () => setState(() => _selectedMenu = 'Inventory & Stock'),
+        ),
+      );
+    }
+
+    if (_hasPermission('finance_view_reports')) {
+      slides.add(
+        MobileHeroSlide(
+          imageUrl:
+              'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1000&q=70',
+          eyebrow: 'Money flow',
+          title: 'Spend with confidence',
+          subtitle:
+              'Live ledgers, invoices and margins distilled into decisions you can trust.',
+          metric: _isLoadingStats ? '—' : '$_completedProjects',
+          metricLabel: 'delivered',
+          icon: Icons.account_balance_wallet_rounded,
+          accent: MobilePalette.violet,
+          onTap: () => setState(() => _selectedMenu = 'Accounts & Finance'),
+        ),
+      );
+    }
+
+    // Never leave the carousel empty for a brand-new workspace.
+    if (slides.isEmpty) {
+      slides.add(
+        MobileHeroSlide(
+          imageUrl:
+              'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&w=1000&q=70',
+          eyebrow: 'Welcome aboard',
+          title: 'Your plant, fully connected',
+          subtitle:
+              'Set up your team, projects and modules to unlock live highlights here.',
+          metric: '24/7',
+          metricLabel: 'visibility',
+          icon: Icons.auto_awesome_rounded,
+          accent: MobilePalette.emerald,
+          onTap: () => setState(() => _selectedMenu = 'Settings & Logs'),
+        ),
+      );
+    }
+
+    return slides.take(5).toList(growable: false);
+  }
+
+  // ================= 🧭 HORIZONTAL MODULE IMAGE RAIL =================
+  Widget _buildMobileModuleRail(bool isDark) {
+    final cards = <Widget>[];
+
+    void addCard({
+      required String imageUrl,
+      required String title,
+      required String subtitle,
+      required IconData icon,
+      required Color accent,
+      required VoidCallback onTap,
+    }) {
+      cards.add(
+        MobileImageRailCard(
+          imageUrl: imageUrl,
+          title: title,
+          subtitle: subtitle,
+          icon: icon,
+          accent: accent,
+          isDark: isDark,
+          onTap: onTap,
+        ),
+      );
+    }
+
+    if (_hasAnyHrAccess) {
+      addCard(
+        imageUrl:
+            'https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=800&q=70',
+        title: 'People & HR',
+        subtitle: 'Roster, leave & appraisals',
+        icon: Icons.groups_rounded,
+        accent: MobilePalette.blue,
+        onTap: () => setState(() => _selectedMenu = 'HR & Employees'),
+      );
+    }
+    if (_hasPermission('tasks_view')) {
+      addCard(
+        imageUrl:
+            'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=800&q=70',
+        title: 'Projects',
+        subtitle: 'Tasks, boards & deadlines',
+        icon: Icons.assignment_rounded,
+        accent: MobilePalette.sky,
+        onTap: () => setState(() => _selectedMenu = 'Projects & Tasks'),
+      );
+    }
+    if (_hasPermission('inventory_view_stock')) {
+      addCard(
+        imageUrl:
+            'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=70',
+        title: 'Inventory',
+        subtitle: 'Stock, GRN & reorder points',
+        icon: Icons.inventory_2_rounded,
+        accent: const Color(0xFF0D9488),
+        onTap: () => setState(() => _selectedMenu = 'Inventory & Stock'),
+      );
+    }
+    if (_hasPermission('manufacturing_view_bom')) {
+      addCard(
+        imageUrl:
+            'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=70',
+        title: 'Production',
+        subtitle: 'BOM, lines & work orders',
+        icon: Icons.precision_manufacturing_rounded,
+        accent: const Color(0xFFF97316),
+        onTap: () =>
+            setState(() => _selectedMenu = 'Manufacturing & BOM'),
+      );
+    }
+    if (_hasPermission('finance_view_reports')) {
+      addCard(
+        imageUrl:
+            'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=70',
+        title: 'Finance',
+        subtitle: 'Invoices, ledgers & margins',
+        icon: Icons.account_balance_wallet_rounded,
+        accent: MobilePalette.emerald,
+        onTap: () => setState(() => _selectedMenu = 'Accounts & Finance'),
+      );
+    }
+    addCard(
+      imageUrl:
+          'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=70',
+      title: 'Workspace',
+      subtitle: 'Profile, theme & security',
+      icon: Icons.tune_rounded,
+      accent: MobilePalette.violet,
+      onTap: () => setState(() => _selectedMenu = 'Settings & Logs'),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MobileSectionHeader(
+          title: 'Explore Modules',
+          subtitle: 'Swipe through your connected workspace',
+          actionLabel: 'All',
+          onAction: () => setState(() => _selectedMenu = 'Settings & Logs'),
+          isDark: isDark,
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 136,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            physics: const BouncingScrollPhysics(),
+            itemCount: cards.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) => cards[index],
+          ),
+        ),
+        const SizedBox(height: 22),
+      ],
+    );
+  }
+
+  // ================= 🟢 ROUNDED TEAM STORIES =================
+  Widget _buildMobileTeamStories(bool isDark) {
+    if (_employees.isEmpty) return const SizedBox.shrink();
+
+    const colors = [
+      MobilePalette.emerald,
+      MobilePalette.blue,
+      MobilePalette.violet,
+      MobilePalette.amber,
+      MobilePalette.cyan,
+      MobilePalette.rose,
+    ];
+
+    final stories = <MobileStoryItem>[
+      MobileStoryItem(
+        label: 'Add',
+        initials: '+',
+        color: MobilePalette.emerald,
+        add: true,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const EmployeeManagementScreen(),
+          ),
+        ).then((_) => _fetchLiveStats()),
+      ),
+    ];
+
+    final count = _employees.length > 12 ? 12 : _employees.length;
+    for (var i = 0; i < count; i++) {
+      final raw = _employees[i];
+      final emp = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+      final name = (emp['full_name'] ?? 'Staff Member').toString().trim();
+      final parts = name.split(RegExp(r'\s+'));
+      final initials = parts
+          .where((part) => part.isNotEmpty)
+          .take(2)
+          .map((part) => part[0].toUpperCase())
+          .join();
+
+      stories.add(
+        MobileStoryItem(
+          label: parts.isNotEmpty ? parts.first : 'Staff',
+          initials: initials.isEmpty ? 'E' : initials,
+          color: colors[i % colors.length],
+          live: i < 2,
+          onTap: () => _openEmployeeFromMobile(emp),
+        ),
+      );
+    }
+
+    return MobileStoryRail(items: stories, isDark: isDark);
   }
 
   Widget _buildMobileProgressRing({
@@ -1717,6 +2044,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           icon: Icons.assignment_rounded,
           color: MobilePalette.sky,
           isDark: isDark,
+          badge: _pendingTasksCount > 0
+              ? (_pendingTasksCount > 99 ? '99+' : '$_pendingTasksCount')
+              : null,
           onTap: () =>
               setState(() => _selectedMenu = 'Projects & Tasks'),
         ),
@@ -1769,25 +2099,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         const columns = 4;
-        const gap = 10.0;
-        final available = constraints.maxWidth.isFinite
+        const gap = 8.0;
+        final available = constraints.maxWidth.isFinite &&
+                constraints.maxWidth > 0
             ? constraints.maxWidth
             : 360.0;
-        final tileWidth = (available - gap * (columns - 1)) / columns;
-        // Keep room for the icon plus a two-line label even on 320px screens.
-        const minTileHeight = 108.0;
-        final naturalHeight = tileWidth / 0.80;
-        final tileHeight =
-            naturalHeight < minTileHeight ? minTileHeight : naturalHeight;
+        final rawTileWidth = (available - gap * (columns - 1)) / columns;
+        // Shave a fraction of a pixel so floating-point rounding can never
+        // push the 4th tile onto a new row.
+        final tileWidth = rawTileWidth > 0 ? rawTileWidth - 0.05 : 64.0;
 
-        return GridView.count(
-          crossAxisCount: columns,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: gap,
-          crossAxisSpacing: gap,
-          childAspectRatio: tileWidth / tileHeight,
-          children: tiles,
+        // Wrap sizes each row to its content, so there is no leftover space
+        // under the icon/label inside the tiles.
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final tile in tiles)
+              SizedBox(width: tileWidth, child: tile),
+          ],
         );
       },
     );
@@ -1802,9 +2132,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required Color color,
     required double progress,
     required VoidCallback onTap,
+    int? countValue,
   }) {
     final textTitle = MobilePalette.title(isDark);
     final textSub = MobilePalette.body(isDark);
+    final valueStyle = TextStyle(
+      color: textTitle,
+      fontSize: 26,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.8,
+      height: 1.0,
+    );
 
     return MobileGlassCard(
       isDark: isDark,
@@ -1832,16 +2170,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              color: textTitle,
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.8,
-              height: 1.0,
-            ),
-          ),
+          if (countValue != null)
+            MobileCountUp(value: countValue, style: valueStyle)
+          else
+            Text(value, style: valueStyle),
           const SizedBox(height: 3),
           Text(
             title,
@@ -3538,6 +3870,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             isDark: isDark,
           ),
           const SizedBox(height: 10),
+          _buildMobileTeamStories(isDark),
+          const SizedBox(height: 8),
           _buildMobileTeamSpotlight(isDark),
           const SizedBox(height: 24),
         ],
@@ -5176,6 +5510,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void dispose() {
     _notifTimer?.cancel();
+    _tabBlurController.dispose();
     super.dispose();
   }
 }

@@ -3347,8 +3347,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                       textSub: textSub,
                     );
                   }
-
-                  // 💻 2. DESKTOP / TABLET VIEW (Horizontally Scrollable Full Table)
+                  // 💻 2. DESKTOP / TABLET VIEW (100% Full Width Table - Zero Side Gap)
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
@@ -3360,7 +3359,9 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(minWidth: 700),
+                          constraints: BoxConstraints(
+                            minWidth: constraints.maxWidth > 750 ? constraints.maxWidth : 750,
+                          ),
                           child: Table(
                             border: TableBorder(
                               horizontalInside: BorderSide(
@@ -3374,15 +3375,15 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                             ),
                             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                             columnWidths: const {
-                              0: FixedColumnWidth(45),   // #
-                              1: FixedColumnWidth(110),  // Work Date
-                              2: FixedColumnWidth(70),   // Day
-                              3: FixedColumnWidth(95),   // Check In
-                              4: FixedColumnWidth(95),   // Check Out
-                              5: FixedColumnWidth(90),   // Duration
-                              6: FixedColumnWidth(80),   // Overtime
-                              7: FixedColumnWidth(95),   // Status
-                              8: FixedColumnWidth(55),   // Action
+                              0: FlexColumnWidth(0.5),   // #
+                              1: FlexColumnWidth(1.4),   // Work Date
+                              2: FlexColumnWidth(0.8),   // Day
+                              3: FlexColumnWidth(1.2),   // Check In
+                              4: FlexColumnWidth(1.2),   // Check Out
+                              5: FlexColumnWidth(1.1),   // Duration
+                              6: FlexColumnWidth(1.0),   // Overtime
+                              7: FlexColumnWidth(1.2),   // Status
+                              8: FlexColumnWidth(0.8),   // Action
                             },
                             children: [
                               // 1. TABLE HEADER ROW

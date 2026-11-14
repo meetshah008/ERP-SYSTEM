@@ -252,7 +252,10 @@ class MobileGradientIcon extends StatelessWidget {
   }
 }
 
-/// Small tile with a tinted icon and a one/two line label.
+/// Flat app-launcher action: a bare icon with a label underneath.
+///
+/// Deliberately has no card surface, border or shadow so quick actions read as
+/// direct icons rather than a grid of cards.
 class MobileActionTile extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -273,61 +276,83 @@ class MobileActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MobileGlassCard(
-      isDark: isDark,
-      onTap: onTap,
-      radius: 16,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(17),
+        splashColor: color.withValues(alpha: 0.14),
+        highlightColor: color.withValues(alpha: 0.06),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              MobileGradientIcon(
-                icon: icon,
-                color: color,
-                isDark: isDark,
-                size: 40,
-                iconSize: 19,
-              ),
-              if (badge != null)
-                Positioned(
-                  top: -3,
-                  right: -5,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(20),
+                      color: color.withValues(alpha: isDark ? 0.16 : 0.10),
+                      shape: BoxShape.circle,
                     ),
-                    child: Text(
-                      badge!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    child: Icon(
+                      icon,
+                      size: 19,
+                      color: isDark
+                          ? Color.lerp(color, Colors.white, 0.28)
+                          : color,
                     ),
                   ),
+                  if (badge != null)
+                    Positioned(
+                      top: -5,
+                      right: -7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF111C2E) : Colors.white,
+                            width: 1.4,
+                          ),
+                        ),
+                        child: Text(
+                          badge!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: MobilePalette.title(isDark),
+                  fontSize: 10.5,
+                  height: 1.15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.1,
                 ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: MobilePalette.title(isDark),
-              fontSize: 11,
-              height: 1.2,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
