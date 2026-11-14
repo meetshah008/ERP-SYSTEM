@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
+import '../../core/network/api_client.dart';
 import '../../core/widgets/botanical_background.dart';
 
 class TaskFormScreen extends StatefulWidget {
@@ -25,6 +27,8 @@ class TaskFormScreen extends StatefulWidget {
 }
 
 class _TaskFormScreenState extends State<TaskFormScreen> {
+  static String get _apiHost => ApiClient.apiHost;
+
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _titleCtrl;
@@ -34,7 +38,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   final List<TextEditingController> _subtaskCtrls = [];
 
   int? _selectedProjectId;
-  int? _selectedAssigneeId;
+  final List<int> _selectedAssigneeIds = [];
   int? _selectedDeptId;
   String _selectedPriority = 'MEDIUM';
   String _selectedStatus = 'TODO';
@@ -59,7 +63,25 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _tagsCtrl = TextEditingController(text: t?['tags'] ?? '');
 
     _selectedProjectId = t != null ? t['project_id'] : widget.preselectedProjectId;
-    _selectedAssigneeId = t != null ? t['assigned_to'] : (widget.employees.isNotEmpty ? widget.employees[0]['employee_id'] : null);
+
+    // Multi-worker assignment initialization
+    if (t != null) {
+      if (t['assignees'] is List && (t['assignees'] as List).isNotEmpty) {
+        for (final a in t['assignees']) {
+          final id = int.tryParse(a['employee_id']?.toString() ?? '');
+          if (id != null && !_selectedAssigneeIds.contains(id)) {
+            _selectedAssigneeIds.add(id);
+          }
+        }
+      }
+      if (_selectedAssigneeIds.isEmpty && t['assigned_to'] != null) {
+        final id = int.tryParse(t['assigned_to'].toString());
+        if (id != null) _selectedAssigneeIds.add(id);
+      }
+    } else if (widget.employees.isNotEmpty) {
+      final id = int.tryParse(widget.employees[0]['employee_id'].toString());
+      if (id != null) _selectedAssigneeIds.add(id);
+    }
 
     if (t != null && t['priority'] != null) {
       final p = t['priority'].toString().toUpperCase();
@@ -110,7 +132,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   Future<void> _fetchDepartments() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+      final res = await http.get(Uri.parse('$_apiHost/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['data'] != null) {
@@ -178,9 +200,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedAssigneeId == null) {
+    if (_selectedAssigneeIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an Assignee!'), backgroundColor: Colors.redAccent),
+        const SnackBar(content: Text('Please select at least 1 Assignee!'), backgroundColor: Colors.redAccent),
       );
       return;
     }
@@ -198,10 +220,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
       if (isEdit) {
         final res = await http.put(
-          Uri.parse('http://localhost:5000/api/tasks/${widget.task!['task_id']}'),
+          Uri.parse('$_apiHost/api/tasks/${widget.task!['task_id']}'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'assigned_to': _selectedAssigneeId,
+            'assigned_to': _selectedAssigneeIds.first,
+            'assignees': _selectedAssigneeIds,
             'project_id': _selectedProjectId,
             'title': _titleCtrl.text.trim(),
             'description': _descCtrl.text.trim(),
@@ -234,14 +257,16 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         }
       } else {
         final res = await http.post(
-          Uri.parse('http://localhost:5000/api/tasks'),
+          Uri.parse('$_apiHost/api/tasks'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'assigned_to': _selectedAssigneeId,
+            'assigned_to': _selectedAssigneeIds.first,
+            'assignees': _selectedAssigneeIds,
             'project_id': _selectedProjectId,
             'title': _titleCtrl.text.trim(),
             'description': _descCtrl.text.trim(),
             'priority': _selectedPriority,
+            'status': _selectedStatus,
             'due_date': dueDateStr,
             'estimated_hours': hours,
             'subtasks': subtasks,
@@ -326,6 +351,52 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
     return InkWell(
       onTap: () => setState(() => _selectedPriority = value),
+      borderRadius: BorderRadius.circular(9),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? color.withValues(alpha: isDark ? 0.3 : 0.15)
+              : (isDark ? const Color(0xFF0B132B) : const Color(0xFFF8FAFC)),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: isSelected ? color : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+            width: isSelected ? 1.8 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: isSelected ? color : Colors.grey,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : (isDark ? Colors.white70 : const Color(0xFF64748B)),
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: 12.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String value, String label, Color color) {
+    final isSelected = _selectedStatus.toUpperCase() == value.toUpperCase();
+    final isDark = ThemeController.isDarkMode.value;
+
+    return InkWell(
+      onTap: () => setState(() => _selectedStatus = value),
       borderRadius: BorderRadius.circular(9),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -683,48 +754,135 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           textTitle: textTitle,
                           textSub: textSub,
                           children: [
-                            // Row: Assignee & Estimated Hours
+                            // Row: Multi-Worker Assignee & Estimated Hours
                             _buildResponsiveRow(
                               isMobile: isMobile,
                               first: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildLabel('Assignee *', isDark),
-                                  DropdownButtonFormField<int>(
-                                    value: _selectedAssigneeId,
-                                    isExpanded: true,
-                                    dropdownColor: cardBg,
-                                    style: TextStyle(color: textTitle, fontSize: 13.5),
-                                    decoration: _inputDecoration('Assignee', Icons.person_outline_rounded, isDark),
-                                    items: widget.employees.map<DropdownMenuItem<int>>((e) {
-                                      final name = (e['full_name'] ?? 'User').toString();
-                                      final firstLetter = name.isNotEmpty ? name[0].toUpperCase() : 'U';
-                                      return DropdownMenuItem<int>(
-                                        value: e['employee_id'],
-                                        child: Row(
-                                          children: [
-                                            CircleAvatar(
-                                              radius: 11,
-                                              backgroundColor: const Color(0xFFECFDF5),
-                                              child: Text(
-                                                firstLetter,
-                                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
-                                              ),
+                                  Row(
+                                    children: [
+                                      _buildLabel('Assigned Workers (${_selectedAssigneeIds.length}) *', isDark),
+                                      const Spacer(),
+                                      if (widget.employees.isNotEmpty)
+                                        PopupMenuButton<int>(
+                                          tooltip: 'Add Worker',
+                                          icon: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                '$name (${e['emp_code'] ?? 'EMP'})',
-                                                style: TextStyle(color: textTitle, fontSize: 13),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
+                                            child: const Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.person_add_alt_1_rounded, size: 14, color: Color(0xFF10B981)),
+                                                SizedBox(width: 4),
+                                                Text('+ Add Worker', style: TextStyle(color: Color(0xFF10B981), fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                              ],
                                             ),
-                                          ],
+                                          ),
+                                          onSelected: (empId) {
+                                            if (!_selectedAssigneeIds.contains(empId)) {
+                                              setState(() => _selectedAssigneeIds.add(empId));
+                                            }
+                                          },
+                                          itemBuilder: (context) {
+                                            return widget.employees.map<PopupMenuItem<int>>((e) {
+                                              final empId = int.tryParse(e['employee_id'].toString()) ?? 0;
+                                              final isSelected = _selectedAssigneeIds.contains(empId);
+                                              return PopupMenuItem<int>(
+                                                value: empId,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                                      size: 18,
+                                                      color: isSelected ? const Color(0xFF10B981) : Colors.grey,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(
+                                                        '${e['full_name']} (${e['emp_code'] ?? 'EMP'})',
+                                                        style: TextStyle(
+                                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                        ),
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList();
+                                          },
                                         ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (val) => setState(() => _selectedAssigneeId = val),
+                                    ],
                                   ),
+                                  const SizedBox(height: 6),
+                                  if (_selectedAssigneeIds.isEmpty)
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? const Color(0xFF0B132B) : const Color(0xFFF8FAFC),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.info_outline_rounded, size: 16, color: textSub),
+                                          const SizedBox(width: 8),
+                                          Text('Tap "+ Add Worker" to assign staff', style: TextStyle(color: textSub, fontSize: 12)),
+                                        ],
+                                      ),
+                                    )
+                                  else
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: _selectedAssigneeIds.map((empId) {
+                                        final emp = widget.employees.firstWhere(
+                                          (e) => (int.tryParse(e['employee_id'].toString()) ?? 0) == empId,
+                                          orElse: () => {'full_name': 'Worker #$empId', 'emp_code': 'EMP'},
+                                        );
+                                        final name = (emp['full_name'] ?? 'Worker').toString();
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFECFDF5),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              CircleAvatar(
+                                                radius: 10,
+                                                backgroundColor: const Color(0xFF10B981),
+                                                child: Text(
+                                                  name.isNotEmpty ? name[0].toUpperCase() : 'W',
+                                                  style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                '$name (${emp['emp_code'] ?? 'EMP'})',
+                                                style: TextStyle(color: textTitle, fontSize: 12, fontWeight: FontWeight.w600),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              InkWell(
+                                                onTap: () {
+                                                  setState(() => _selectedAssigneeIds.remove(empId));
+                                                },
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Icon(Icons.close_rounded, size: 14, color: textSub),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
                                 ],
                               ),
                               second: Column(
@@ -740,7 +898,20 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 16),
+
+                            // Status Chips (Integrated from Quick Edit Modal)
+                            _buildLabel('Current Status', isDark),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _buildStatusChip('TODO', 'To Do', const Color(0xFF3B82F6)),
+                                _buildStatusChip('IN_PROGRESS', 'In Progress', const Color(0xFFF59E0B)),
+                                _buildStatusChip('DONE', 'Done / Completed', const Color(0xFF10B981)),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
 
                             // Priority Chips
                             _buildLabel('Priority Level', isDark),
@@ -754,7 +925,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 _buildPriorityChip('URGENT', 'Urgent', const Color(0xFFEF4444)),
                               ],
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 16),
 
                             // Row: Start Date & Due Date
                             _buildResponsiveRow(
@@ -835,7 +1006,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           cardBg: cardBg,
                           borderColor: cardBorder,
                           textTitle: textTitle,
-                          textSub: textSub,
+                        textSub: textSub,
                           children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,

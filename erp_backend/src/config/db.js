@@ -49,6 +49,19 @@ async function testConnection() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 2B. Auto-create task_assignees (Multi-worker assignment support)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS task_assignees (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        employee_id INT NOT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_task_emp (task_id, employee_id),
+        FOREIGN KEY (task_id) REFERENCES task(task_id) ON DELETE CASCADE,
+        FOREIGN KEY (employee_id) REFERENCES EMPLOYEE(employee_id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // 3. Ensure EMPLOYEE columns exist
     const columns = [
       { name: 'employment_type', sql: "VARCHAR(50) DEFAULT 'Permanent'" },

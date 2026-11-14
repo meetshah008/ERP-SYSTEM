@@ -17,26 +17,32 @@ class MobilePalette {
   static const Color rose = Color(0xFFE11D48);
   static const Color blue = Color(0xFF2563EB);
 
+  static const Color pageBg = Color(0xFFFFFFFF);
+  static const Color inputFill = Color(0xFFFAFAFA);
+  static const Color surface = Color(0xFFF4F4F5);
+  static const Color primaryBtn = Color(0xFF18181B);
+  static const Color primaryBtnText = Color(0xFFFFFFFF);
+
   static Color title(bool isDark) =>
-      isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A);
+      isDark ? const Color(0xFFF1F5F9) : const Color(0xFF09090B);
 
   static Color body(bool isDark) =>
-      isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+      isDark ? const Color(0xFF94A3B8) : const Color(0xFF52525B);
 
   static Color faint(bool isDark) =>
-      isDark ? const Color(0xFF64748B) : const Color(0xFF64748B);
+      isDark ? const Color(0xFF64748B) : const Color(0xFF71717A);
 
   static Color card(bool isDark) =>
-      isDark ? const Color(0xFF111C2E) : Colors.white;
+      isDark ? const Color(0xFF111C2E) : const Color(0xFFFFFFFF);
 
   static Color cardSolid(bool isDark) =>
-      isDark ? const Color(0xFF111C2E) : Colors.white;
+      isDark ? const Color(0xFF111C2E) : const Color(0xFFFFFFFF);
 
   static Color border(bool isDark) =>
-      isDark ? const Color(0xFF22304A) : const Color(0xFFDCE3EC);
+      isDark ? const Color(0xFF22304A) : const Color(0xFFE4E4E7);
 
   static Color hairline(bool isDark) =>
-      isDark ? const Color(0xFF1E293B) : const Color(0xFFE7EDF4);
+      isDark ? const Color(0xFF1E293B) : const Color(0xFFE4E4E7);
 
   static LinearGradient heroGradient(bool isDark) => LinearGradient(
         begin: Alignment.topLeft,

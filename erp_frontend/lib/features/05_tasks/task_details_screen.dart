@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
+import '../../core/network/api_client.dart';
 import '../../core/widgets/botanical_background.dart';
+import 'task_form_screen.dart';
 
 class TaskDetailsScreen extends StatefulWidget {
   final dynamic taskId;
@@ -25,11 +28,12 @@ class TaskDetailsScreen extends StatefulWidget {
 }
 
 class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
+  static String get _apiHost => ApiClient.apiHost;
+
   Map<String, dynamic>? _task;
   List<dynamic> _employees = [];
+  List<dynamic> _projects = [];
   bool _isLoading = true;
-  bool _isEditing = false;
-  bool _isSaving = false;
   bool _hasChanges = false;
 
   // Edit Form Controllers
@@ -61,9 +65,24 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
       _logWorkerId = empId ?? (_employees.isNotEmpty ? int.tryParse(_employees.first['employee_id'].toString()) : null);
     }
     _fetchTaskDetails();
+    _fetchProjects();
     if (_employees.isEmpty) {
       _fetchEmployees();
     }
+  }
+
+  Future<void> _fetchProjects() async {
+    try {
+      final res = await http.get(Uri.parse('$_apiHost/api/projects'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (mounted && data['success'] == true && data['data'] != null) {
+          setState(() {
+            _projects = (data['data'] is List) ? List<dynamic>.from(data['data']) : [];
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -95,7 +114,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
   Future<void> _fetchTaskDetails() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/tasks/${widget.taskId}'));
+      final res = await http.get(Uri.parse('$_apiHost/api/tasks/${widget.taskId}'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['data'] != null && data['data'] is Map) {
@@ -115,7 +134,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
   Future<void> _fetchEmployees() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final res = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (mounted) {
@@ -140,7 +159,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
     try {
       await http.put(
-        Uri.parse('http://localhost:5000/api/tasks/${widget.taskId}/status'),
+        Uri.parse('$_apiHost/api/tasks/${widget.taskId}/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': newStatus}),
       );
@@ -148,49 +167,6 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
       _showSnackbar('Task status changed to $newStatus', isSuccess: true);
     } catch (e) {
       _showSnackbar('Error updating status: $e', isSuccess: false);
-    }
-  }
-
-  // 2. SAVE FULL TASK DETAILS (From Inline Edit Mode)
-  Future<void> _saveTaskChanges() async {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) {
-      _showSnackbar('Task Title is required', isSuccess: false);
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final payload = {
-        'title': title,
-        'description': _descCtrl.text.trim(),
-        'priority': _selectedPriority,
-        'status': _selectedStatus,
-        'assigned_to': _selectedAssigneeId ?? _task?['assigned_to'] ?? 1,
-        'project_id': _task?['project_id'] ?? widget.projectId,
-        'estimated_hours': double.tryParse(_hoursCtrl.text.trim()) ?? 0,
-        'due_date': _selectedDueDate?.toIso8601String().split('T')[0],
-      };
-
-      final res = await http.put(
-        Uri.parse('http://localhost:5000/api/tasks/${widget.taskId}'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(payload),
-      );
-
-      if (res.statusCode == 200) {
-        _hasChanges = true;
-        setState(() => _isEditing = false);
-        _fetchTaskDetails();
-        widget.onTaskUpdated?.call();
-        _showSnackbar('Task updated successfully!', isSuccess: true);
-      } else {
-        _showSnackbar('Failed to update task: ${res.body}', isSuccess: false);
-      }
-    } catch (e) {
-      _showSnackbar('Network error: $e', isSuccess: false);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -211,7 +187,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
     try {
       await http.put(
-        Uri.parse('http://localhost:5000/api/projects/subtasks/$subtaskId'),
+        Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'is_completed': isCompleted}),
       );
@@ -227,7 +203,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     _newSubtaskCtrl.clear();
     try {
       final res = await http.post(
-        Uri.parse('http://localhost:5000/api/projects/tasks/${widget.taskId}/subtasks'),
+        Uri.parse('$_apiHost/api/projects/tasks/${widget.taskId}/subtasks'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'title': title}),
       );
@@ -250,7 +226,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     });
 
     try {
-      await http.delete(Uri.parse('http://localhost:5000/api/projects/subtasks/$subtaskId'));
+      await http.delete(Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'));
       widget.onTaskUpdated?.call();
     } catch (_) {}
   }
@@ -271,7 +247,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     try {
       final projectId = _task?['project_id'] ?? widget.projectId ?? 1;
       final res = await http.post(
-        Uri.parse('http://localhost:5000/api/projects/$projectId/timesheets'),
+        Uri.parse('$_apiHost/api/projects/$projectId/timesheets'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'task_id': widget.taskId,
@@ -323,7 +299,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     if (confirm != true) return;
 
     try {
-      final res = await http.delete(Uri.parse('http://localhost:5000/api/tasks/${widget.taskId}'));
+      final res = await http.delete(Uri.parse('$_apiHost/api/tasks/${widget.taskId}'));
       if (res.statusCode == 200) {
         widget.onTaskUpdated?.call();
         if (mounted) {
@@ -454,14 +430,30 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                       ),
                     ),
 
-                    // Toggle Edit Mode Button
+                    // Edit Task Button -> Opens COMMON TaskFormScreen!
                     IconButton(
-                      icon: Icon(_isEditing ? Icons.close_rounded : Icons.edit_note_rounded, color: _isEditing ? Colors.redAccent : const Color(0xFF2563EB)),
-                      tooltip: _isEditing ? 'Cancel Edit' : 'Edit Task Details',
-                      onPressed: () => setState(() {
-                        if (_isEditing) _initFormValues();
-                        _isEditing = !_isEditing;
-                      }),
+                      icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2563EB)),
+                      tooltip: 'Edit Task Details',
+                      onPressed: () async {
+                        final res = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskFormScreen(
+                              task: _task,
+                              projects: _projects,
+                              employees: _employees,
+                              onTaskSaved: () {
+                                _fetchTaskDetails();
+                                widget.onTaskUpdated?.call();
+                              },
+                            ),
+                          ),
+                        );
+                        if (res == true) {
+                          _fetchTaskDetails();
+                          widget.onTaskUpdated?.call();
+                        }
+                      },
                     ),
 
                     // Delete Task Button
@@ -486,30 +478,25 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // A. INLINE EDIT PANEL (If editing mode is active - NO POPUP)
-                                if (_isEditing)
-                                  _buildInlineEditCard(cardBg, cardBorder, textTitle, textSub, inputBg, isDark)
-                                else ...[
-                                  // B. HERO TASK STATUS CARD
-                                  _buildHeroTaskCard(cardBg, cardBorder, textTitle, textSub, priColor, statColor, isDone, priority, status),
-                                  const SizedBox(height: 16),
+                                // B. HERO TASK STATUS CARD
+                                _buildHeroTaskCard(cardBg, cardBorder, textTitle, textSub, priColor, statColor, isDone, priority, status),
+                                const SizedBox(height: 16),
 
-                                  // C. WORKER & ESTIMATES ROW
-                                  _buildWorkerAndEstimatesRow(cardBg, cardBorder, textTitle, textSub, isDark),
-                                  const SizedBox(height: 16),
+                                // C. WORKER & ESTIMATES ROW
+                                _buildWorkerAndEstimatesRow(cardBg, cardBorder, textTitle, textSub, isDark),
+                                const SizedBox(height: 16),
 
-                                  // D. DESCRIPTION CARD
-                                  _buildDescriptionCard(cardBg, cardBorder, textTitle, textSub),
-                                  const SizedBox(height: 16),
+                                // D. DESCRIPTION CARD
+                                _buildDescriptionCard(cardBg, cardBorder, textTitle, textSub),
+                                const SizedBox(height: 16),
 
-                                  // E. SUBTASKS CHECKLIST CARD (Interactive checklist + inline add)
-                                  _buildChecklistCard(cardBg, cardBorder, textTitle, textSub, inputBg, subtasks, doneSubtasks, totalSubtasks, subtaskProgress, isDark),
-                                  const SizedBox(height: 16),
+                                // E. SUBTASKS CHECKLIST CARD (Interactive checklist + inline add)
+                                _buildChecklistCard(cardBg, cardBorder, textTitle, textSub, inputBg, subtasks, doneSubtasks, totalSubtasks, subtaskProgress, isDark),
+                                const SizedBox(height: 16),
 
-                                  // F. TIME TRACKING & LOGGED HOURS (Interactive timesheet + inline log)
-                                  _buildTimeTrackingCard(cardBg, cardBorder, textTitle, textSub, inputBg, timesheets, isDark),
-                                  const SizedBox(height: 30),
-                                ],
+                                // F. TIME TRACKING & LOGGED HOURS (Interactive timesheet + inline log)
+                                _buildTimeTrackingCard(cardBg, cardBorder, textTitle, textSub, inputBg, timesheets, isDark),
+                                const SizedBox(height: 30),
                               ],
                             ),
                           ),
@@ -1145,202 +1132,4 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
   }
 
-  // 6. INLINE EDIT CARD (WHEN USER CLICKS EDIT IN TOP BAR - NO POPUP)
-  Widget _buildInlineEditCard(Color cardBg, Color cardBorder, Color textTitle, Color textSub, Color inputBg, bool isDark) {
-    final priorityList = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
-    final safePriorityValue = priorityList.contains(_selectedPriority.toUpperCase()) ? _selectedPriority.toUpperCase() : 'MEDIUM';
-
-    final statusList = ['TODO', 'IN_PROGRESS', 'DONE'];
-    final safeStatusValue = statusList.contains(_selectedStatus.toUpperCase()) ? _selectedStatus.toUpperCase() : 'TODO';
-
-    final validAssignees = _employees.where((e) => e['employee_id'] != null).toList();
-    final hasAssignee = validAssignees.any((e) => int.tryParse(e['employee_id'].toString()) == _selectedAssigneeId);
-    final safeAssigneeValue = hasAssignee ? _selectedAssigneeId : null;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF2563EB).withValues(alpha: 0.1),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2563EB).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.edit_note_rounded, color: Color(0xFF2563EB), size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Text('Edit Task Details', style: TextStyle(color: textTitle, fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => setState(() => _isEditing = false),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Title
-          TextField(
-            controller: _titleCtrl,
-            style: TextStyle(color: textTitle, fontSize: 14),
-            decoration: InputDecoration(
-              labelText: 'Task Title',
-              labelStyle: TextStyle(color: textSub),
-              filled: true,
-              fillColor: inputBg,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cardBorder)),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Description
-          TextField(
-            controller: _descCtrl,
-            maxLines: 4,
-            style: TextStyle(color: textTitle, fontSize: 13),
-            decoration: InputDecoration(
-              labelText: 'Description',
-              labelStyle: TextStyle(color: textSub),
-              filled: true,
-              fillColor: inputBg,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cardBorder)),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Row: Priority & Status
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: safePriorityValue,
-                  decoration: InputDecoration(
-                    labelText: 'Priority',
-                    labelStyle: TextStyle(color: textSub, fontSize: 12),
-                    filled: true,
-                    fillColor: inputBg,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  dropdownColor: cardBg,
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  items: priorityList.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                  onChanged: (val) => setState(() => _selectedPriority = val ?? 'MEDIUM'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: safeStatusValue,
-                  decoration: InputDecoration(
-                    labelText: 'Status',
-                    labelStyle: TextStyle(color: textSub, fontSize: 12),
-                    filled: true,
-                    fillColor: inputBg,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  dropdownColor: cardBg,
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  items: statusList.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                  onChanged: (val) => setState(() => _selectedStatus = val ?? 'TODO'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Row: Assignee & Hours
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: DropdownButtonFormField<int>(
-                  value: safeAssigneeValue,
-                  decoration: InputDecoration(
-                    labelText: 'Assign Worker',
-                    labelStyle: TextStyle(color: textSub, fontSize: 12),
-                    filled: true,
-                    fillColor: inputBg,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  dropdownColor: cardBg,
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  hint: const Text('Select Worker'),
-                  items: validAssignees.map<DropdownMenuItem<int>>((e) {
-                    final empId = int.tryParse(e['employee_id'].toString()) ?? 0;
-                    return DropdownMenuItem<int>(
-                      value: empId,
-                      child: Text('${e['full_name']} (${e['emp_code'] ?? 'EMP'})', overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedAssigneeId = val),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _hoursCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  decoration: InputDecoration(
-                    labelText: 'Est. Hours',
-                    labelStyle: TextStyle(color: textSub, fontSize: 12),
-                    filled: true,
-                    fillColor: inputBg,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-
-          // Actions
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => setState(() => _isEditing = false),
-                child: Text('Cancel', style: TextStyle(color: textSub)),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: _isSaving
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.check_rounded, size: 18),
-                label: Text(_isSaving ? 'Saving...' : 'Save Task Changes', style: const TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: _isSaving ? null : _saveTaskChanges,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }

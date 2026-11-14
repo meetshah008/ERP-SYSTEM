@@ -1,21 +1,39 @@
 const db = require('../../config/db');
 
-// 1. NAYA TASK ASSIGN KARNA (General ya Project Task)
+// 1. NAYA TASK ASSIGN KARNA (General ya Project Task - Supports Single or Multiple Assignees)
 exports.createTask = async (req, res) => {
   try {
-    const { assigned_to, title, description, priority, due_date, project_id, estimated_hours, subtasks } = req.body;
+    const { assigned_to, assignees, title, description, priority, status, due_date, project_id, estimated_hours, subtasks } = req.body;
 
-    if (!assigned_to || !title) {
-      return res.status(400).json({ success: false, message: 'Assignee aur Task ka Title zaroori hai!' });
+    // Handle multiple assignees or single assigned_to
+    let assigneeList = [];
+    if (Array.isArray(assignees) && assignees.length > 0) {
+      assigneeList = assignees.map(id => parseInt(id)).filter(id => !isNaN(id));
+    } else if (assigned_to) {
+      assigneeList = [parseInt(assigned_to)];
     }
+
+    if (assigneeList.length === 0 || !title) {
+      return res.status(400).json({ success: false, message: 'Kam se kam 1 Assignee aur Task ka Title zaroori hai!' });
+    }
+
+    const primaryAssignee = assigneeList[0];
 
     const [result] = await db.query(
       `INSERT INTO task (assigned_to, project_id, title, description, priority, status, due_date, estimated_hours)
-       VALUES (?, ?, ?, ?, ?, 'TODO', ?, ?)`,
-      [assigned_to, project_id || null, title, description || '', priority || 'MEDIUM', due_date || null, estimated_hours || 0]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [primaryAssignee, project_id || null, title, description || '', priority || 'MEDIUM', status || 'TODO', due_date || null, estimated_hours || 0]
     );
 
     const taskId = result.insertId;
+
+    // Insert all assignees into task_assignees table
+    for (const empId of assigneeList) {
+      await db.query(
+        `INSERT IGNORE INTO task_assignees (task_id, employee_id) VALUES (?, ?)`,
+        [taskId, empId]
+      );
+    }
 
     if (Array.isArray(subtasks) && subtasks.length > 0) {
       for (const st of subtasks) {
@@ -38,7 +56,7 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// 2. SAARE TASKS KI LIST DEKHNA (Get All Tasks with Project name if linked)
+// 2. SAARE TASKS KI LIST DEKHNA (Get All Tasks with Project name & Multi-Assignees)
 exports.getTasks = async (req, res) => {
   try {
     const [tasks] = await db.query(
@@ -46,17 +64,31 @@ exports.getTasks = async (req, res) => {
               e.employee_id, e.full_name as assigned_worker, e.emp_code,
               p.project_name, p.project_code
        FROM task t
-       JOIN employee e ON t.assigned_to = e.employee_id
+       LEFT JOIN employee e ON t.assigned_to = e.employee_id
        LEFT JOIN project p ON t.project_id = p.project_id
        ORDER BY t.task_id DESC`
     );
 
     for (const task of tasks) {
+      // Subtasks
       const [subtasks] = await db.query(
         `SELECT * FROM task_subtask WHERE task_id = ? ORDER BY subtask_id ASC`,
         [task.task_id]
       );
       task.subtasks = subtasks;
+
+      // Multi-Assignees
+      const [assignees] = await db.query(
+        `SELECT e.employee_id, e.full_name, e.emp_code, e.designation
+         FROM task_assignees ta
+         JOIN employee e ON ta.employee_id = e.employee_id
+         WHERE ta.task_id = ?`,
+        [task.task_id]
+      );
+      task.assignees = assignees;
+      if (assignees.length > 0) {
+        task.assigned_worker = assignees.map(a => a.full_name).join(', ');
+      }
     }
 
     return res.status(200).json({ success: true, data: tasks });
@@ -66,7 +98,7 @@ exports.getTasks = async (req, res) => {
 };
 
 
-// 2B. EK TASK KI DETAIL DATA (Single Task Details with subtasks, timesheets, assignee, project)
+// 2B. EK TASK KI DETAIL DATA (Single Task Details with subtasks, timesheets, assignees, project)
 exports.getTaskDetails = async (req, res) => {
   try {
     const { id } = req.params;
@@ -93,6 +125,19 @@ exports.getTaskDetails = async (req, res) => {
       [id]
     );
     task.subtasks = subtasks;
+
+    // Multi-Assignees
+    const [assignees] = await db.query(
+      `SELECT e.employee_id, e.full_name, e.emp_code, e.designation
+       FROM task_assignees ta
+       JOIN employee e ON ta.employee_id = e.employee_id
+       WHERE ta.task_id = ?`,
+      [id]
+    );
+    task.assignees = assignees;
+    if (assignees.length > 0) {
+      task.assigned_worker = assignees.map(a => a.full_name).join(', ');
+    }
 
     // Timesheets (hours logged for this specific task)
     let timesheets = [];
@@ -128,15 +173,25 @@ exports.updateTaskStatus = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-// 4. TASK UPDATE KARNA (Title, Description, Assignee, Priority, Hours)
+// 4. TASK UPDATE KARNA (Title, Description, Multiple Assignees, Priority, Status, Hours)
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const { assigned_to, project_id, title, description, priority, status, due_date, estimated_hours } = req.body;
+    const { assigned_to, assignees, project_id, title, description, priority, status, due_date, estimated_hours } = req.body;
 
-    if (!title || !assigned_to) {
-      return res.status(400).json({ success: false, message: 'Assignee aur Title zaroori hain!' });
+    // Handle multiple assignees or single assigned_to
+    let assigneeList = [];
+    if (Array.isArray(assignees) && assignees.length > 0) {
+      assigneeList = assignees.map(empId => parseInt(empId)).filter(empId => !isNaN(empId));
+    } else if (assigned_to) {
+      assigneeList = [parseInt(assigned_to)];
     }
+
+    if (!title || assigneeList.length === 0) {
+      return res.status(400).json({ success: false, message: 'Kam se kam 1 Assignee aur Title zaroori hain!' });
+    }
+
+    const primaryAssignee = assigneeList[0];
 
     await db.query(
       `UPDATE task SET
@@ -150,7 +205,7 @@ exports.updateTask = async (req, res) => {
         estimated_hours = COALESCE(?, estimated_hours)
       WHERE task_id = ?`,
       [
-        assigned_to,
+        primaryAssignee,
         project_id !== undefined ? project_id : null,
         title,
         description !== undefined ? description : '',
@@ -161,6 +216,12 @@ exports.updateTask = async (req, res) => {
         id
       ]
     );
+
+    // Sync task_assignees table
+    await db.query('DELETE FROM task_assignees WHERE task_id = ?', [id]);
+    for (const empId of assigneeList) {
+      await db.query('INSERT IGNORE INTO task_assignees (task_id, employee_id) VALUES (?, ?)', [id, empId]);
+    }
 
     return res.status(200).json({ success: true, message: 'Task updated successfully!' });
   } catch (error) {

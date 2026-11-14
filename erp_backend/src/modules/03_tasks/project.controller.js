@@ -132,13 +132,25 @@ exports.getProjectDetails = async (req, res) => {
       ORDER BY t.task_id DESC
     `, [id]);
 
-    // Har task ke subtasks attach karna
+    // Har task ke subtasks aur assignees attach karna
     for (const task of tasks) {
       const [subtasks] = await db.query(
         `SELECT * FROM task_subtask WHERE task_id = ? ORDER BY subtask_id ASC`,
         [task.task_id]
       );
       task.subtasks = subtasks;
+
+      const [assignees] = await db.query(
+        `SELECT e.employee_id, e.full_name, e.emp_code, e.designation
+         FROM task_assignees ta
+         JOIN employee e ON ta.employee_id = e.employee_id
+         WHERE ta.task_id = ?`,
+        [task.task_id]
+      );
+      task.assignees = assignees;
+      if (assignees.length > 0) {
+        task.assigned_worker = assignees.map(a => a.full_name).join(', ');
+      }
     }
 
     // D. Timesheets (Kisne kitne ghante kaam kiya)

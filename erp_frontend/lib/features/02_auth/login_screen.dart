@@ -238,10 +238,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(7),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF059669).withValues(alpha: 0.10),
+                      color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFF4F4F5),
                       borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE4E4E7)),
                     ),
-                    child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF059669), size: 19),
+                    child: Icon(
+                      Icons.precision_manufacturing_rounded,
+                      color: isDark ? Colors.white : const Color(0xFF18181B),
+                      size: 19,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -437,6 +442,7 @@ class _LoginScreenState extends State<LoginScreen> {
             hint: 'Your Email',
             icon: Icons.email_outlined,
             isDark: isDark,
+            isMobile: isMobile,
             keyboardType: TextInputType.emailAddress,
             validator: (v) => v!.trim().isEmpty ? 'Official email is required' : null,
           ),
@@ -447,6 +453,7 @@ class _LoginScreenState extends State<LoginScreen> {
             hint: 'Password',
             icon: Icons.lock_outline,
             isDark: isDark,
+            isMobile: isMobile,
             isPassword: _obscurePassword,
             suffixIcon: IconButton(
               icon: Icon(
@@ -470,7 +477,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     width: 20,
                     child: Checkbox(
                       value: _rememberMe,
-                      activeColor: const Color(0xFF059669),
+                      activeColor: isMobile ? const Color(0xFF18181B) : const Color(0xFF059669),
                       checkColor: Colors.white,
                       side: BorderSide(
                         color: isDark
@@ -509,7 +516,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ElevatedButton(
               onPressed: _isLoading ? null : _handleLogin,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF059669),
+                backgroundColor: isMobile ? (isDark ? const Color(0xFF27272A) : const Color(0xFF18181B)) : const Color(0xFF059669),
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -584,12 +591,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     MaterialPageRoute(builder: (_) => const CompanySetupScreen()),
                   );
                 },
-                child: const Text(
+                child: Text(
                   'Sign up here',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF059669),
+                    color: isMobile
+                        ? (isDark ? Colors.white : const Color(0xFF09090B))
+                        : const Color(0xFF059669),
                   ),
                 ),
               ),
@@ -606,6 +615,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     required bool isDark,
     bool isPassword = false,
+    bool isMobile = false,
     Widget? suffixIcon,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
@@ -648,7 +658,12 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
+          borderSide: BorderSide(
+            color: isMobile
+                ? (isDark ? Colors.white : const Color(0xFF18181B))
+                : const Color(0xFF059669),
+            width: 1.5,
+          ),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),

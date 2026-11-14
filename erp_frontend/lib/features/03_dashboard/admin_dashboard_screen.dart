@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/network/session_manager.dart';
+import '../../core/network/api_client.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../02_auth/login_screen.dart';
 import '../04_hr_module/employee_management_screen.dart';
@@ -18,6 +19,8 @@ import '../05_tasks/project_tasks_screen.dart';
 import '../04_hr_module/employee_details_screen.dart';
 import '../04_hr_module/salary_increment_screen.dart';
 import '../04_hr_module/departments_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform; // <-- Add this
+import '../../core/widgets/expandable_nav_bar.dart';  // <-- Add this
 
 class AdminDashboardScreen extends StatefulWidget {
   final String companyName;
@@ -38,6 +41,8 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin {
+  static String get _apiHost => ApiClient.apiHost;
+
   // Kaunsa tab abhi active hai
   String _selectedMenu = 'Dashboard';
 
@@ -113,7 +118,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _fetchLiveStats() async {
     try {
       // 1. Staff count
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/stats'));
+      final res = await http.get(Uri.parse('$_apiHost/api/hr/stats'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -122,7 +127,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
 
       // 2. Tasks count (TODO ya IN_PROGRESS)
-      final taskRes = await http.get(Uri.parse('http://localhost:5000/api/tasks'));
+      final taskRes = await http.get(Uri.parse('$_apiHost/api/tasks'));
       if (taskRes.statusCode == 200) {
         final taskData = jsonDecode(taskRes.body);
         if (taskData['success'] == true && taskData['data'] is List) {
@@ -133,7 +138,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
 
       // 3. 👈 YEH MISSING THA: Real Employees List Fetch Karna!
-      final empRes = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final empRes = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final empData = jsonDecode(empRes.body);
         if (empData['success'] == true && empData['data'] is List) {
@@ -142,7 +147,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
       // 4. Departments List Fetch Karna
       try {
-        final deptRes = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+        final deptRes = await http.get(Uri.parse('$_apiHost/api/hr/departments'));
         if (deptRes.statusCode == 200) {
           final deptData = jsonDecode(deptRes.body);
           if (deptData['success'] == true && deptData['data'] is List) {
@@ -152,7 +157,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       } catch (_) {}
       // 5. Projects Fetch Karna & Stats Calculate Karna
       try {
-        final prjRes = await http.get(Uri.parse('http://localhost:5000/api/projects'));
+        final prjRes = await http.get(Uri.parse('$_apiHost/api/projects'));
         if (prjRes.statusCode == 200) {
           final prjData = jsonDecode(prjRes.body);
           if (prjData['success'] == true && prjData['data'] is List) {
@@ -189,7 +194,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       if (role.isNotEmpty) queryParts.add('role=${Uri.encodeComponent(role)}');
       queryParts.add('can_approve_leaves=$canApproveLeaves');
 
-      String url = 'http://localhost:5000/api/hr/notifications';
+      String url = '$_apiHost/api/hr/notifications';
       if (queryParts.isNotEmpty) {
         url += '?${queryParts.join('&')}';
       }
@@ -250,7 +255,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       if (role.isNotEmpty) queryParts.add('role=${Uri.encodeComponent(role)}');
                       queryParts.add('can_approve_leaves=$canApproveLeaves');
 
-                      String url = 'http://localhost:5000/api/hr/notifications/mark-all-read';
+                      String url = '$_apiHost/api/hr/notifications/mark-all-read';
                       if (queryParts.isNotEmpty) {
                         url += '?${queryParts.join('&')}';
                       }
@@ -328,7 +333,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           ),
                           onTap: () async {
                             try {
-                              await http.put(Uri.parse('http://localhost:5000/api/hr/notifications/${n['notification_id']}/read'));
+                              await http.put(Uri.parse('$_apiHost/api/hr/notifications/${n['notification_id']}/read'));
                               _fetchNotifications();
                             } catch (_) {}
                             if (mounted) {
@@ -488,6 +493,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isDesktop = screenWidth >= 900;
     final isDashboard = _selectedMenu == 'Dashboard';
+    final isMobileDevice = !kIsWeb && screenWidth < 900; // <-- Add this
+    final isKeyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0; // <-- Add this
 
     return ValueListenableBuilder<bool>(
       valueListenable: ThemeController.isDarkMode,
@@ -518,7 +525,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           if (isDesktop) _buildDesktopHeader(isDark),
                           Expanded(
                             child: RefreshIndicator(
-                              color: MobilePalette.emerald,
+                              color: isMobileDevice
+                                  ? (isDark ? Colors.white : const Color(0xFF18181B))
+                                  : MobilePalette.emerald,
                               backgroundColor: isDark
                                   ? const Color(0xFF111C2E)
                                   : Colors.white,
@@ -538,7 +547,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                   isDesktop ? 22.0 : (isDashboard ? 0.0 : 16.0),
                                   isDesktop ? 22.0 : (isDashboard ? 0.0 : 8.0),
                                   isDesktop ? 22.0 : (isDashboard ? 0.0 : 16.0),
-                                  isDesktop ? 22.0 : 126.0,
+                                  isDesktop ? 22.0 : (isMobileDevice ? 96.0 : 126.0), // <-- ~96px on mobile device
                                 ),
                                 child: _buildSelectedTabContent(isDesktop),
                               ),
@@ -559,9 +568,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           backgroundColor: Colors.transparent,
           body: isDesktop ? body : _buildTabBlurWrapper(body),
 
-          // 📱 Floating bottom navigation (mobile only)
-          bottomNavigationBar:
-              isDesktop ? null : _buildMobileBottomNav(isDark),
+          // 📱 Expandable floating nav bar (MOBILE ONLY: !kIsWeb && screenWidth < 900)
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButton: (isMobileDevice && !isKeyboardOpen)
+              ? ExpandableNavBar(
+            key: const ValueKey('expandable_nav_bar'),
+            currentIndex: _getBottomNavIndex(),
+            onItemSelected: _onBottomNavTapped,
+          )
+              : null,
+
+          // Keep existing bottomNavigationBar for web narrow screen,
+          // hide on desktop (>= 900) and mobile device (!kIsWeb && < 900)
+          bottomNavigationBar: (isDesktop || isMobileDevice)
+              ? null
+              : _buildMobileBottomNav(isDark),
         );
       },
     );
@@ -751,7 +772,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             children: [
               MobileGradientIcon(
                 icon: _mobileTabIcon(),
-                color: MobilePalette.emerald,
+                color: isDark ? Colors.white : const Color(0xFF18181B),
                 isDark: isDark,
                 size: 36,
                 iconSize: 17,
@@ -2655,7 +2676,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (!_hasPermission('hr_manage_departments')) return;
     // 1. Fetch latest employees from backend to ensure up-to-date staff list
     try {
-      final empRes = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final empRes = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final empData = jsonDecode(empRes.body);
         if (empData['success'] == true && empData['data'] is List) {
@@ -3069,7 +3090,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                   final deptId = deptToEdit['department_id'];
                                   try {
                                     final res = await http.put(
-                                      Uri.parse('http://localhost:5000/api/hr/departments/$deptId'),
+                                      Uri.parse('$_apiHost/api/hr/departments/$deptId'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
                                         'name': name,
@@ -3124,7 +3145,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                   // Create New Department
                                   try {
                                     final res = await http.post(
-                                      Uri.parse('http://localhost:5000/api/hr/departments'),
+                                      Uri.parse('$_apiHost/api/hr/departments'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
                                         'name': name,
@@ -3204,7 +3225,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () async {
               try {
-                final res = await http.delete(Uri.parse('http://localhost:5000/api/hr/departments/${dept['department_id']}'));
+                final res = await http.delete(Uri.parse('$_apiHost/api/hr/departments/${dept['department_id']}'));
                 if (res.statusCode == 200) {
                   setParentModalState(() {
                     _departments.removeWhere((d) => d['department_id'] == dept['department_id']);
@@ -4374,7 +4395,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
         return FutureBuilder<http.Response>(
           // 👈 Backend se is employee ka live performance data manga rahe hain
-          future: http.get(Uri.parse('http://localhost:5000/api/hr/employees/${emp['employee_id']}/performance')),
+          future: http.get(Uri.parse('$_apiHost/api/hr/employees/${emp['employee_id']}/performance')),
           builder: (context, snapshot) {
             Map<String, dynamic> perf = {};
             bool isLoading = snapshot.connectionState == ConnectionState.waiting;

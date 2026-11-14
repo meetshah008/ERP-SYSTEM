@@ -382,37 +382,7 @@ class _MobileCanvas extends StatelessWidget {
                     end: Alignment.bottomCenter,
                     colors: isDark
                         ? const [Color(0xFF0B1220), Color(0xFF0F172A)]
-                        : const [Color(0xFFF1F5F9), Color(0xFFE3E9F0)],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: -140,
-              left: -100,
-              child: IgnorePointer(
-                child: Container(
-                  width: 340,
-                  height: 340,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        const Color(0xFF059669)
-                            .withValues(alpha: isDark ? 0.10 : 0.07),
-                        const Color(0xFF059669).withValues(alpha: 0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _PointerGlowPainter(
-                    pointer: pointer,
-                    isDark: isDark,
+                        : const [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
                   ),
                 ),
               ),

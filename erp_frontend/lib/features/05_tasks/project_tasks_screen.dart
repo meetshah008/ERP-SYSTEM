@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/gestures.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../core/network/api_client.dart';
 import 'task_details_screen.dart';
 import 'project_edit_screen.dart';
 import 'task_form_screen.dart';
@@ -16,6 +19,8 @@ class ProjectTasksScreen extends StatefulWidget {
 }
 
 class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTickerProviderStateMixin {
+  static String get _apiHost => ApiClient.apiHost;
+
   // Main view mode: 0 = Projects Hub, 1 = General Tasks (Kanban)
   int _activeTopView = 0;
 
@@ -29,6 +34,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   String _selectedDeptFilter = 'ALL';
   String _projectSearchQuery = '';
   final TextEditingController _projectSearchController = TextEditingController();
+  final ScrollController _deptScrollController = ScrollController();
+
 
   // Selected Project (Detailed Workspace)
   Map<String, dynamic>? _selectedProject;
@@ -50,6 +57,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   String _genSortOption = 'SMART'; // SMART, DUE_DATE, PRIORITY, NEWEST
   bool _genOnlyOverdue = false;
   String _genViewMode = 'KANBAN'; // 'KANBAN' or 'LIST'
+  String _genMobileColumnTab = 'TODO'; // 'TODO', 'IN_PROGRESS', 'DONE'
 
   @override
   void initState() {
@@ -64,6 +72,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     _taskSearchController.dispose();
     _genTaskSearchController.dispose();
     _projectSearchController.dispose();
+    _deptScrollController.dispose();
     super.dispose();
   }
 
@@ -81,7 +90,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 1. PROJECTS MANGWANA
   Future<void> _fetchProjects() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/projects'));
+      final res = await http.get(Uri.parse('$_apiHost/api/projects'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -94,7 +103,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 1.1 DEPARTMENTS MANGWANA
   Future<void> _fetchDepartments() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+      final res = await http.get(Uri.parse('$_apiHost/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -380,7 +389,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 2. SAARE TASKS MANGWANA
   Future<void> _fetchAllTasks() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/tasks'));
+      final res = await http.get(Uri.parse('$_apiHost/api/tasks'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -393,7 +402,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 3. EMPLOYEES MANGWANA
   Future<void> _fetchEmployees() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final res = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -407,7 +416,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   Future<void> _fetchProjectDetails(int projectId) async {
     setState(() => _isLoadingDetails = true);
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/projects/$projectId'));
+      final res = await http.get(Uri.parse('$_apiHost/api/projects/$projectId'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -426,7 +435,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   Future<void> _updateTaskStatus(int taskId, String newStatus) async {
     try {
       final res = await http.put(
-        Uri.parse('http://localhost:5000/api/tasks/$taskId/status'),
+        Uri.parse('$_apiHost/api/tasks/$taskId/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': newStatus}),
       );
@@ -444,7 +453,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   Future<void> _toggleSubtask(int subtaskId, bool isCompleted) async {
     try {
       final res = await http.put(
-        Uri.parse('http://localhost:5000/api/projects/subtasks/$subtaskId'),
+        Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'is_completed': isCompleted}),
       );
@@ -551,7 +560,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                           Navigator.pop(ctx);
                           try {
                             final res = await http.delete(
-                              Uri.parse('http://localhost:5000/api/projects/${prj['project_id']}'),
+                              Uri.parse('$_apiHost/api/projects/${prj['project_id']}'),
                             );
                             if (res.statusCode == 200) {
                               if (_selectedProject != null && _selectedProject!['project_id'] == prj['project_id']) {
@@ -677,7 +686,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                           Navigator.pop(ctx);
                           try {
                             final res = await http.delete(
-                              Uri.parse('http://localhost:5000/api/tasks/${task['task_id']}'),
+                              Uri.parse('$_apiHost/api/tasks/${task['task_id']}'),
                             );
                             print("DELETE STATUS: ${res.statusCode} -> ${res.body}");
 
@@ -911,7 +920,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                                         setModalState(() => isSaving = true);
                                         try {
                                           final res = await http.post(
-                                            Uri.parse('http://localhost:5000/api/projects/$projectId/materials'),
+                                            Uri.parse('$_apiHost/api/projects/$projectId/materials'),
                                             headers: {'Content-Type': 'application/json'},
                                             body: jsonEncode({
                                               'material_name': nameCtrl.text.trim(),
@@ -1007,7 +1016,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                           Navigator.pop(ctx);
                           try {
                             final res = await http.delete(
-                              Uri.parse('http://localhost:5000/api/projects/materials/${m['material_id']}'),
+                              Uri.parse('$_apiHost/api/projects/materials/${m['material_id']}'),
                             );
                             if (res.statusCode == 200) {
                               if (_selectedProject != null) {
@@ -1170,81 +1179,183 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 1. TOP HEADER & SWITCHER
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cardBorder, width: 1.2),
-              ),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isNarrow = constraints.maxWidth < 620;
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 620;
 
-                  final switcher = Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+            // 📱 MOBILE VIEW: Minimal monochrome tabs
+            if (isNarrow) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7),
+                      width: 1.0,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildViewTabButton(0, '📦 Projects', Icons.folder_copy_outlined, textTitle),
-                        _buildViewTabButton(1, '⚡ General Tasks', Icons.bolt_rounded, textTitle),
-                      ],
-                    ),
-                  );
-
-                  final actionButton = ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                    onPressed: () {
-                      if (_activeTopView == 0) {
-                        _openCreateProjectDialog();
-                      } else {
-                        _openCreateTaskDialog(preselectedProjectId: null);
-                      }
-                    },
-                    icon: const Icon(Icons.add_rounded, size: 20),
-                    label: Text(
-                      _activeTopView == 0 ? ' New Project' : ' Assign Task',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  );
-
-                  if (isNarrow) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: switcher,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // Tab 1: Projects
+                    InkWell(
+                      onTap: () => setState(() => _activeTopView = 0),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: _activeTopView == 0
+                              ? Border(
+                                  bottom: BorderSide(
+                                    color: isDark ? Colors.white : const Color(0xFF09090B),
+                                    width: 2.2,
+                                  ),
+                                )
+                              : null,
                         ),
-                        const SizedBox(height: 10),
-                        actionButton,
-                      ],
-                    );
-                  }
+                        child: Text(
+                          'Projects',
+                          style: TextStyle(
+                            color: _activeTopView == 0
+                                ? (isDark ? Colors.white : const Color(0xFF09090B))
+                                : (isDark ? Colors.white60 : const Color(0xFF71717A)),
+                            fontSize: 14.5,
+                            fontWeight: _activeTopView == 0 ? FontWeight.bold : FontWeight.w500,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
 
-                  return Row(
+                    // Tab 2: General tasks
+                    InkWell(
+                      onTap: () => setState(() => _activeTopView = 1),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: _activeTopView == 1
+                              ? Border(
+                                  bottom: BorderSide(
+                                    color: isDark ? Colors.white : const Color(0xFF09090B),
+                                    width: 2.2,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        child: Text(
+                          'General tasks',
+                          style: TextStyle(
+                            color: _activeTopView == 1
+                                ? (isDark ? Colors.white : const Color(0xFF09090B))
+                                : (isDark ? Colors.white60 : const Color(0xFF71717A)),
+                            fontSize: 14.5,
+                            fontWeight: _activeTopView == 1 ? FontWeight.bold : FontWeight.w500,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const Spacer(),
+
+                    // Primary Button on Mobile: #18181B (kaala) with safed text
+                    InkWell(
+                      onTap: () {
+                        if (_activeTopView == 0) {
+                          _openCreateProjectDialog();
+                        } else {
+                          _openCreateTaskDialog(preselectedProjectId: null);
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6.5),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF27272A) : const Color(0xFF18181B),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.add_rounded, size: 15, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                              _activeTopView == 0 ? 'Project' : 'Task',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // 💻 DESKTOP / WEB VIEW (100% UNTOUCHED)
+            final switcher = Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildViewTabButton(0, '📦 Projects', Icons.folder_copy_outlined, textTitle),
+                  _buildViewTabButton(1, '⚡ General Tasks', Icons.bolt_rounded, textTitle),
+                ],
+              ),
+            );
+
+            final actionButton = ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onPressed: () {
+                if (_activeTopView == 0) {
+                  _openCreateProjectDialog();
+                } else {
+                  _openCreateTaskDialog(preselectedProjectId: null);
+                }
+              },
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: Text(
+                _activeTopView == 0 ? ' New Project' : ' Assign Task',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            );
+
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: cardBorder, width: 1.2),
+                  ),
+                  child: Row(
                     children: [
                       switcher,
                       const Spacer(),
                       actionButton,
                     ],
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
         const SizedBox(height: 18),
 
@@ -1297,24 +1408,45 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
 
         // Search Bar Widget
         final searchBarWidget = Container(
-          height: 42,
+          height: 40,
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cardBorder, width: 1.1),
+            color: isCompact
+                ? (isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFFAFAFA))
+                : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.9)),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isCompact
+                  ? (isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7))
+                  : cardBorder,
+              width: 1.0,
+            ),
             boxShadow: const [],
           ),
           child: TextField(
             controller: _projectSearchController,
             onChanged: (val) => setState(() => _projectSearchQuery = val),
-            style: TextStyle(color: textTitle, fontSize: 13),
+            style: TextStyle(
+              color: isCompact ? (isDark ? Colors.white : const Color(0xFF09090B)) : textTitle,
+              fontSize: 13,
+            ),
             decoration: InputDecoration(
-              hintText: 'Search projects (name, PRJ-001, client, lead)...',
-              hintStyle: TextStyle(color: textSub.withValues(alpha: 0.6), fontSize: 12),
-              prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF10B981), size: 18),
+              hintText: 'Search projects (name, PRJ-001, client)...',
+              hintStyle: TextStyle(
+                color: isCompact ? (isDark ? Colors.white38 : const Color(0xFF71717A)) : textSub.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: isCompact ? (isDark ? Colors.white54 : const Color(0xFF71717A)) : const Color(0xFF10B981),
+                size: 18,
+              ),
               suffixIcon: _projectSearchQuery.isNotEmpty
                   ? IconButton(
-                      icon: Icon(Icons.clear_rounded, color: textSub, size: 16),
+                      icon: Icon(
+                        Icons.clear_rounded,
+                        color: isCompact ? const Color(0xFF71717A) : textSub,
+                        size: 16,
+                      ),
                       onPressed: () {
                         _projectSearchController.clear();
                         setState(() => _projectSearchQuery = '');
@@ -1322,100 +1454,187 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                     )
                   : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             ),
           ),
         );
 
-        // Department Chips Row
-        final deptChipsWidget = SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(
-            children: deptFilters.map((df) {
-              final isSelected = _selectedDeptFilter.toLowerCase() == df['key'].toString().toLowerCase();
-              final count = df['count'] as int;
+        // Helper to scroll left / right smoothly
+        void scrollDept(double offset) {
+          if (_deptScrollController.hasClients) {
+            final target = (_deptScrollController.offset + offset)
+                .clamp(0.0, _deptScrollController.position.maxScrollExtent);
+            _deptScrollController.animateTo(
+              target,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOut,
+            );
+          }
+        }
 
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: InkWell(
-                  onTap: () {
-                    setState(() => _selectedDeptFilter = df['key']);
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: isSelected
-                          ? const LinearGradient(
-                              colors: [Color(0xFF059669), Color(0xFF10B981)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            )
-                          : null,
-                      color: isSelected
-                          ? null
-                          : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.75)),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isSelected ? const Color(0xFF10B981) : cardBorder,
-                        width: 1.1,
-                      ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
+        // Department Chips Row with Left/Right Arrows, Mouse Wheel & Drag Support
+        final deptChipsWidget = Row(
+          children: [
+            // ◀ Left Scroll Button
+            InkWell(
+              onTap: () => scrollDept(-220),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: cardBorder, width: 1.1),
+                ),
+                child: Icon(Icons.chevron_left_rounded, size: 18, color: textSub),
+              ),
+            ),
+            const SizedBox(width: 6),
+
+            // Scrollable Chips Viewport
+            Expanded(
+              child: Listener(
+                // Mouse wheel ko horizontal scroll me convert karta hai
+                onPointerSignal: (pointerSignal) {
+                  if (pointerSignal is PointerScrollEvent && _deptScrollController.hasClients) {
+                    final target = (_deptScrollController.offset + pointerSignal.scrollDelta.dy * 1.5)
+                        .clamp(0.0, _deptScrollController.position.maxScrollExtent);
+                    _deptScrollController.jumpTo(target);
+                  }
+                },
+                child: ScrollConfiguration(
+                  // Mouse drag aur touch drag allow karta hai
+                  behavior: ScrollConfiguration.of(context).copyWith(
+                    dragDevices: {
+                      PointerDeviceKind.touch,
+                      PointerDeviceKind.mouse,
+                      PointerDeviceKind.trackpad,
+                    },
+                  ),
+                  child: SingleChildScrollView(
+                    controller: _deptScrollController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          df['icon'] as IconData,
-                          size: 14,
-                          color: isSelected
-                              ? Colors.white
-                              : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          df['name'],
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : textTitle,
-                            fontSize: 12.5,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Colors.white.withValues(alpha: 0.25)
-                                : (isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
+                      children: deptFilters.map((df) {
+                        final isSelected = _selectedDeptFilter.toLowerCase() == df['key'].toString().toLowerCase();
+                        final count = df['count'] as int;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: InkWell(
+                            onTap: () {
+                              setState(() => _selectedDeptFilter = df['key']);
+                            },
                             borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '$count',
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : textSub,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.bold,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                gradient: isSelected
+                                    ? (isCompact
+                                        ? null
+                                        : const LinearGradient(
+                                            colors: [Color(0xFF059669), Color(0xFF10B981)],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ))
+                                    : null,
+                                color: isSelected
+                                    ? (isCompact ? (isDark ? Colors.white : const Color(0xFF18181B)) : null)
+                                    : (isCompact
+                                        ? (isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFFAFAFA))
+                                        : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.75))),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? (isCompact ? (isDark ? Colors.white : const Color(0xFF18181B)) : const Color(0xFF10B981))
+                                      : (isCompact ? (isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7)) : cardBorder),
+                                  width: 1.0,
+                                ),
+                                boxShadow: isSelected && !isCompact
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    df['icon'] as IconData,
+                                    size: 14,
+                                    color: isSelected
+                                        ? (isCompact ? (isDark ? const Color(0xFF09090B) : Colors.white) : Colors.white)
+                                        : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    df['name'],
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? (isCompact ? (isDark ? const Color(0xFF09090B) : Colors.white) : Colors.white)
+                                          : textTitle,
+                                      fontSize: 12.5,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? (isCompact
+                                              ? (isDark ? Colors.black.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.2))
+                                              : Colors.white.withValues(alpha: 0.25))
+                                          : (isCompact
+                                              ? (isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFF4F4F5))
+                                              : (isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0))),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '$count',
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? (isCompact ? (isDark ? const Color(0xFF09090B) : Colors.white) : Colors.white)
+                                            : textSub,
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
-              );
-            }).toList(),
-          ),
+              ),
+            ),
+            const SizedBox(width: 6),
+
+            // ▶ Right Scroll Button
+            InkWell(
+              onTap: () => scrollDept(220),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: cardBorder, width: 1.1),
+                ),
+                child: Icon(Icons.chevron_right_rounded, size: 18, color: textSub),
+              ),
+            ),
+          ],
         );
 
         if (isCompact) {
@@ -1480,7 +1699,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   if (_projects.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
+                      style: ElevatedButton.styleFrom(
+
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       ),
@@ -1536,6 +1756,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // ================= ⚡ VIEW B: GENERAL TASKS (KANBAN & LIST) =================
   Widget _buildGeneralTasksKanbanView(Color cardBg, Color cardBorder, Color textTitle, Color textSub) {
     final isDark = ThemeController.isDarkMode.value;
+    final taskCardBg = isDark ? const Color(0xFF0F172A) : Colors.white;
     final allGeneral = _generalTasks;
     final filtered = _filteredGeneralTasks;
 
@@ -1573,14 +1794,37 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
             builder: (context, constraints) {
               final isCompact = constraints.maxWidth < 820;
               if (isCompact) {
-                return Column(
-                  children: [
-                    _buildKanbanColumn('To Do', Icons.radio_button_unchecked_rounded, todo, const Color(0xFF3B82F6), cardBg, cardBorder, textTitle, textSub, isMobile: true),
-                    const SizedBox(height: 14),
-                    _buildKanbanColumn('In Progress', Icons.timelapse_rounded, inProgress, const Color(0xFFF59E0B), cardBg, cardBorder, textTitle, textSub, isMobile: true),
-                    const SizedBox(height: 14),
-                    _buildKanbanColumn('Completed', Icons.task_alt_rounded, done, const Color(0xFF10B981), cardBg, cardBorder, textTitle, textSub, isMobile: true),
-                  ],
+                // 📱 MOBILE: Direct tasks list - no outer column box, no duplicate header, natural page scrolling!
+                final activeList = _genMobileColumnTab == 'TODO'
+                    ? todo
+                    : (_genMobileColumnTab == 'IN_PROGRESS' ? inProgress : done);
+                final activeColor = _genMobileColumnTab == 'TODO'
+                    ? const Color(0xFF3B82F6)
+                    : (_genMobileColumnTab == 'IN_PROGRESS'
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFF10B981));
+                final activeTitle = _genMobileColumnTab == 'TODO'
+                    ? 'To Do'
+                    : (_genMobileColumnTab == 'IN_PROGRESS' ? 'In Progress' : 'Completed');
+
+                if (activeList.isEmpty) {
+                  return _buildKanbanColumnEmptyState(activeTitle, isDark, cardBorder, textTitle, textSub);
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: activeList.length,
+                  padding: const EdgeInsets.only(top: 4, bottom: 20),
+                  itemBuilder: (context, i) => _buildGeneralTaskCard(
+                    activeList[i],
+                    activeColor,
+                    taskCardBg,
+                    cardBorder,
+                    textTitle,
+                    textSub,
+                    isDark,
+                  ),
                 );
               }
 
@@ -1615,93 +1859,259 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     final completed = tasks.where((t) => _taskStatus(t) == 'DONE').length;
     final progress = total > 0 ? (completed / total) : 0.0;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cardBorder, width: 1.1),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 750;
-          final titleRow = Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF059669), Color(0xFF10B981)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 19),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'General Tasks',
-                    style: TextStyle(color: textTitle, fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    '$total task${total == 1 ? '' : 's'} • ${(progress * 100).round()}% done',
-                    style: TextStyle(color: textSub, fontSize: 11),
-                  ),
-                ],
-              ),
-            ],
-          );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 750;
 
-          final pills = Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _buildGeneralTaskStatPill('Total', '$total', Icons.layers_outlined, const Color(0xFF3B82F6), isDark, cardBorder, textTitle, textSub),
-              _buildGeneralTaskStatPill('In Progress', '$inProgress', Icons.timelapse_rounded, const Color(0xFFF59E0B), isDark, cardBorder, textTitle, textSub),
-              _buildGeneralTaskStatPill('Overdue', '$overdue', Icons.warning_amber_rounded, const Color(0xFFEF4444), isDark, cardBorder, textTitle, textSub, selected: _genOnlyOverdue, onTap: () => setState(() => _genOnlyOverdue = !_genOnlyOverdue)),
-              _buildGeneralTaskStatPill('Completed', '$completed', Icons.task_alt_rounded, const Color(0xFF10B981), isDark, cardBorder, textTitle, textSub),
-              IconButton(
-                tooltip: 'Refresh tasks',
-                onPressed: _isLoading ? null : _refreshAll,
-                icon: Icon(Icons.refresh_rounded, size: 17, color: textSub),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                style: IconButton.styleFrom(
-                  backgroundColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.82),
-                  side: BorderSide(color: cardBorder),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                ),
-              ),
-            ],
-          );
+        // 📱 MOBILE VIEW: Clean, modern, matching Image 2
+        if (isNarrow) {
+          final todoCount = tasks.where((t) => _taskStatus(t) == 'TODO').length;
+          final inProgCount = tasks.where((t) => _taskStatus(t) == 'IN_PROGRESS').length;
+          final doneCount = tasks.where((t) => _taskStatus(t) == 'DONE').length;
 
-          if (isNarrow) {
-            return Column(
+          return Container(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                titleRow,
-                const SizedBox(height: 10),
-                pills,
-              ],
-            );
-          }
+                // 1. Title + Subtitle + Notification Bell Button Row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'General tasks',
+                            style: TextStyle(
+                              color: isDark ? Colors.white : const Color(0xFF09090B),
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '$total tasks · ${(progress * 100).round()}% done',
+                            style: TextStyle(
+                              color: isDark ? Colors.white60 : const Color(0xFF71717A),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Notification Bell in rounded box
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFFAFAFA),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7),
+                          width: 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          Icons.notifications_none_rounded,
+                          size: 19,
+                          color: isDark ? Colors.white : const Color(0xFF09090B),
+                        ),
+                        onPressed: _isLoading ? null : _refreshAll,
+                        tooltip: 'Refresh',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-          return Row(
+                // 2. Monochrome Progress Bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: SizedBox(
+                    height: 4.5,
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : const Color(0xFFE4E4E7),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isDark ? Colors.white : const Color(0xFF18181B),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 3. Status Tabs with Pill Badges (To do, In progress, Done)
+                Row(
+                  children: [
+                    _buildMobileKanbanTabItem('To do', todoCount, _genMobileColumnTab == 'TODO', () {
+                      setState(() => _genMobileColumnTab = 'TODO');
+                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                    const SizedBox(width: 18),
+                    _buildMobileKanbanTabItem('In progress', inProgCount, _genMobileColumnTab == 'IN_PROGRESS', () {
+                      setState(() => _genMobileColumnTab = 'IN_PROGRESS');
+                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                    const SizedBox(width: 18),
+                    _buildMobileKanbanTabItem('Done', doneCount, _genMobileColumnTab == 'DONE', () {
+                      setState(() => _genMobileColumnTab = 'DONE');
+                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }
+
+        // 💻 DESKTOP / WEB VIEW (100% UNTOUCHED)
+        final titleRow = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF059669), Color(0xFF10B981)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 19),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'General Tasks',
+                  style: TextStyle(color: textTitle, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '$total task${total == 1 ? '' : 's'} • ${(progress * 100).round()}% done',
+                  style: TextStyle(color: textSub, fontSize: 11),
+                ),
+              ],
+            ),
+          ],
+        );
+
+        final pills = Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _buildGeneralTaskStatPill('Total', '$total', Icons.layers_outlined, const Color(0xFF3B82F6), isDark, cardBorder, textTitle, textSub),
+            _buildGeneralTaskStatPill('In Progress', '$inProgress', Icons.timelapse_rounded, const Color(0xFFF59E0B), isDark, cardBorder, textTitle, textSub),
+            _buildGeneralTaskStatPill('Overdue', '$overdue', Icons.warning_amber_rounded, const Color(0xFFEF4444), isDark, cardBorder, textTitle, textSub, selected: _genOnlyOverdue, onTap: () => setState(() => _genOnlyOverdue = !_genOnlyOverdue)),
+            _buildGeneralTaskStatPill('Completed', '$completed', Icons.task_alt_rounded, const Color(0xFF10B981), isDark, cardBorder, textTitle, textSub),
+            IconButton(
+              tooltip: 'Refresh tasks',
+              onPressed: _isLoading ? null : _refreshAll,
+              icon: Icon(Icons.refresh_rounded, size: 17, color: textSub),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              style: IconButton.styleFrom(
+                backgroundColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.82),
+                side: BorderSide(color: cardBorder),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+              ),
+            ),
+          ],
+        );
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cardBorder, width: 1.1),
+          ),
+          child: Row(
             children: [
               titleRow,
               const Spacer(),
               pills,
             ],
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMobileKanbanTabItem(
+    String label,
+    int count,
+    bool isSelected,
+    VoidCallback onTap,
+    Color textTitle,
+    Color textSub,
+    bool isDark,
+  ) {
+    final titleCol = isDark ? Colors.white : const Color(0xFF09090B);
+    final mutedCol = isDark ? Colors.white60 : const Color(0xFF71717A);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          border: isSelected
+              ? Border(
+                  bottom: BorderSide(
+                    color: titleCol,
+                    width: 2.2,
+                  ),
+                )
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? titleCol : mutedCol,
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : const Color(0xFFF4F4F5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  color: isSelected ? titleCol : mutedCol,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1770,95 +2180,134 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       ) {
     final filtersActive = _hasGeneralTaskFilters;
 
-    final searchField = SizedBox(
-      height: 40,
-      child: TextField(
-        controller: _genTaskSearchController,
-        onChanged: (val) => setState(() => _genTaskSearchQuery = val),
-        style: TextStyle(color: textTitle, fontSize: 13),
-        decoration: InputDecoration(
-          hintText: 'Search tasks, #ID, assignee...',
-          hintStyle: TextStyle(color: textSub.withValues(alpha: 0.65), fontSize: 12.5),
-          prefixIcon: Icon(Icons.search_rounded, size: 18, color: textSub),
-          suffixIcon: _genTaskSearchQuery.isNotEmpty
-              ? IconButton(
-            icon: const Icon(Icons.close_rounded, size: 16),
-            color: textSub,
-            onPressed: () {
-              _genTaskSearchController.clear();
-              setState(() => _genTaskSearchQuery = '');
-            },
-          )
-              : null,
-          filled: true,
-          fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.95),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide(color: cardBorder)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide(color: cardBorder)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.4)),
-        ),
-      ),
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 850;
 
-    // View Switcher (Board vs List)
-    final viewSwitcher = Container(
-      height: 40,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: cardBorder, width: 1.1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildViewModeOption('KANBAN', Icons.view_kanban_outlined, 'Board', isDark),
-          _buildViewModeOption('LIST', Icons.format_list_bulleted_rounded, 'List', isDark),
-        ],
-      ),
-    );
+        // 📱 MOBILE TOKENS (User palette)
+        final mBorder = isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7);
+        final mTitle = isDark ? Colors.white : const Color(0xFF09090B);
+        final mBody = isDark ? Colors.white70 : const Color(0xFF52525B);
+        final mMuted = isDark ? Colors.white38 : const Color(0xFF71717A);
+        final mInputFill = isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFFAFAFA);
 
-    final filterWidgets = <Widget>[
-      _buildGeneralPriorityMenu(cardBorder, textTitle, textSub, isDark),
-      _buildGeneralAssigneeMenu(cardBorder, textTitle, textSub, isDark),
-      _buildGeneralSortMenu(cardBorder, textTitle, textSub, isDark),
-      if (filtersActive) _buildGeneralResetButton(cardBorder, isDark),
-      viewSwitcher,
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cardBorder, width: 1.1),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 850;
-          if (isCompact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                searchField,
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: Row(children: filterWidgets),
+        final searchField = SizedBox(
+          height: 38,
+          child: TextField(
+            controller: _genTaskSearchController,
+            onChanged: (val) => setState(() => _genTaskSearchQuery = val),
+            style: TextStyle(color: isCompact ? mTitle : textTitle, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Search tasks, #ID, assignee...',
+              hintStyle: TextStyle(
+                color: isCompact ? mMuted : textSub.withValues(alpha: 0.65),
+                fontSize: 12.5,
+              ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                size: 17,
+                color: isCompact ? mMuted : textSub,
+              ),
+              suffixIcon: _genTaskSearchQuery.isNotEmpty
+                  ? IconButton(
+                icon: const Icon(Icons.close_rounded, size: 15),
+                color: isCompact ? mMuted : textSub,
+                onPressed: () {
+                  _genTaskSearchController.clear();
+                  setState(() => _genTaskSearchQuery = '');
+                },
+              )
+                  : null,
+              filled: true,
+              fillColor: isCompact ? mInputFill : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.95)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: isCompact ? mBorder : cardBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: isCompact ? mBorder : cardBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: isCompact ? (isDark ? Colors.white : const Color(0xFF18181B)) : const Color(0xFF10B981),
+                  width: 1.2,
                 ),
-              ],
-            );
-          }
-          return Row(
+              ),
+            ),
+          ),
+        );
+
+        // View Switcher (Board vs List)
+        final viewSwitcher = Container(
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: isCompact
+                ? mInputFill
+                : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.92)),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isCompact ? mBorder : cardBorder, width: 1.0),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildViewModeOption('KANBAN', Icons.view_kanban_outlined, 'Board', isDark),
+              _buildViewModeOption('LIST', Icons.format_list_bulleted_rounded, 'List', isDark),
+            ],
+          ),
+        );
+
+        final filterWidgets = <Widget>[
+          _buildGeneralPriorityMenu(isCompact ? mBorder : cardBorder, isCompact ? mTitle : textTitle, isCompact ? mBody : textSub, isDark, isMobile: isCompact),
+          _buildGeneralAssigneeMenu(isCompact ? mBorder : cardBorder, isCompact ? mTitle : textTitle, isCompact ? mBody : textSub, isDark, isMobile: isCompact),
+          _buildGeneralSortMenu(isCompact ? mBorder : cardBorder, isCompact ? mTitle : textTitle, isCompact ? mBody : textSub, isDark, isMobile: isCompact),
+          if (filtersActive) _buildGeneralResetButton(isCompact ? mBorder : cardBorder, isDark),
+          viewSwitcher,
+        ];
+
+        return Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            color: isCompact
+                ? (isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFFFFFFF))
+                : cardBg,
+            borderRadius: BorderRadius.circular(14),
+            border: isCompact ? Border.all(color: mBorder, width: 1.0) : Border.all(color: cardBorder, width: 1.1),
+            boxShadow: isCompact
+                ? [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ]
+                : null,
+          ),
+          child: isCompact
+              ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              searchField,
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(children: filterWidgets),
+              ),
+            ],
+          )
+              : Row(
             children: [
               Expanded(child: searchField),
               const SizedBox(width: 10),
               ...filterWidgets,
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1895,7 +2344,22 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       ),
     );
   }
-  BoxDecoration _generalToolbarDecoration(bool isActive, bool isDark, Color cardBorder) {
+
+  BoxDecoration _generalToolbarDecoration(bool isActive, bool isDark, Color cardBorder, {bool isMobile = false}) {
+    if (isMobile) {
+      return BoxDecoration(
+        color: isActive
+            ? (isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFF4F4F5))
+            : (isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFFAFAFA)),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isActive
+              ? (isDark ? Colors.white : const Color(0xFF18181B))
+              : (isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7)),
+          width: 1.0,
+        ),
+      );
+    }
     const emerald = Color(0xFF10B981);
     return BoxDecoration(
       color: isActive
@@ -1909,7 +2373,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     );
   }
 
-  Widget _buildGeneralPriorityMenu(Color cardBorder, Color textTitle, Color textSub, bool isDark) {
+  Widget _buildGeneralPriorityMenu(Color cardBorder, Color textTitle, Color textSub, bool isDark, {bool isMobile = false}) {
     const options = <String, String>{
       'ALL': 'All priorities',
       'URGENT': 'Urgent',
@@ -1969,7 +2433,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           child: Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 11),
-            decoration: _generalToolbarDecoration(isActive, isDark, cardBorder),
+            decoration: _generalToolbarDecoration(isActive, isDark, cardBorder, isMobile: isMobile),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1993,7 +2457,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     );
   }
 
-  Widget _buildGeneralAssigneeMenu(Color cardBorder, Color textTitle, Color textSub, bool isDark) {
+  Widget _buildGeneralAssigneeMenu(Color cardBorder, Color textTitle, Color textSub, bool isDark, {bool isMobile = false}) {
     final assignees = _generalTaskAssignees;
     final isActive = _genAssigneeFilter != 'ALL';
     final label = isActive ? _genAssigneeFilter : 'Assignee';
@@ -2046,14 +2510,14 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
             height: 36,
             constraints: const BoxConstraints(maxWidth: 170),
             padding: const EdgeInsets.symmetric(horizontal: 11),
-            decoration: _generalToolbarDecoration(isActive, isDark, cardBorder),
+            decoration: _generalToolbarDecoration(isActive, isDark, cardBorder, isMobile: isMobile),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.person_outline_rounded,
                   size: 14,
-                  color: isActive ? const Color(0xFF10B981) : textSub,
+                  color: isActive ? (isDark ? Colors.white : const Color(0xFF09090B)) : textSub,
                 ),
                 const SizedBox(width: 6),
                 Flexible(
@@ -2062,7 +2526,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isActive ? const Color(0xFF059669) : textTitle,
+                      color: isActive ? (isDark ? Colors.white : const Color(0xFF09090B)) : textTitle,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2078,7 +2542,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     );
   }
 
-  Widget _buildGeneralSortMenu(Color cardBorder, Color textTitle, Color textSub, bool isDark) {
+  Widget _buildGeneralSortMenu(Color cardBorder, Color textTitle, Color textSub, bool isDark, {bool isMobile = false}) {
     const options = <String, String>{
       'SMART': 'Smart order',
       'DUE_DATE': 'Due date',
@@ -2139,20 +2603,20 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           child: Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 11),
-            decoration: _generalToolbarDecoration(isActive, isDark, cardBorder),
+            decoration: _generalToolbarDecoration(isActive, isDark, cardBorder, isMobile: isMobile),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.sort_rounded,
                   size: 15,
-                  color: isActive ? const Color(0xFF10B981) : textSub,
+                  color: isActive ? (isDark ? Colors.white : const Color(0xFF09090B)) : textSub,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: TextStyle(
-                    color: isActive ? const Color(0xFF059669) : textTitle,
+                    color: isActive ? (isDark ? Colors.white : const Color(0xFF09090B)) : textTitle,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -2246,7 +2710,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
+            style: ElevatedButton.styleFrom(
+
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             ),
@@ -2698,13 +3163,13 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFF4F4F5),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFE4E4E7)),
               ),
               child: Text(
                 prj['project_code'] ?? 'PRJ',
-                style: const TextStyle(color: Color(0xFF059669), fontSize: 11, fontWeight: FontWeight.bold),
+                style: TextStyle(color: isDark ? Colors.white : const Color(0xFF18181B), fontSize: 11, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(width: 6),
@@ -2712,12 +3177,13 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF059669).withValues(alpha: 0.15),
+                  color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFFAFAFA),
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE4E4E7)),
                 ),
                 child: Text(
                   statusText,
-                  style: const TextStyle(color: Color(0xFF059669), fontSize: 10.5, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF52525B), fontSize: 10.5, fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -2770,7 +3236,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           width: double.infinity,
           height: 42,
           child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
+            style: ElevatedButton.styleFrom(
+
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -2858,7 +3325,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                       ),
                     ),
                     ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
+                      style: ElevatedButton.styleFrom(
+
                         padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 8 : 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         elevation: 1,
@@ -3210,7 +3678,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   onToggleSubtask: (subtaskId, val) => _toggleSubtask(subtaskId, val),
                   onDeleteSubtask: (subtaskId) async {
                     try {
-                      await http.delete(Uri.parse('http://localhost:5000/api/projects/subtasks/$subtaskId'));
+                      await http.delete(Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'));
                       if (_selectedProject != null) _fetchProjectDetails(_selectedProject!['project_id']);
                     } catch (_) {}
                   },
@@ -3818,6 +4286,33 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
             ? Icons.check_rounded
             : Icons.replay_rounded;
 
+    final isMobile = MediaQuery.of(context).size.width < 820;
+    final mobileTextTitle = widget.isDark ? Colors.white : const Color(0xFF0F172A);
+    final mobileTextSub = widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+    // 📱 MOBILE: DESIGN B (ULTRA-COMPACT LIST ITEM - 55-60PX HEIGHT)
+    if (isMobile) {
+      return _buildMobileCompactListItem(
+        context: context,
+        task: task,
+        status: status,
+        isDone: isDone,
+        isOverdue: isOverdue,
+        priority: priority,
+        priorityColor: priorityColor,
+        workerName: workerName,
+        subtasks: subtasks,
+        doneSubtasks: doneSubtasks,
+        nextStatus: nextStatus,
+        mobileTextTitle: mobileTextTitle,
+        mobileTextSub: mobileTextSub,
+      );
+    }
+
+    final cardTitleColor = isDone
+        ? widget.textTitle.withValues(alpha: 0.72)
+        : widget.textTitle;
+
     final baseBorderColor = isOverdue
         ? const Color(0xFFEF4444).withValues(alpha: 0.5)
         : isDone
@@ -3835,11 +4330,11 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 11),
         transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
         decoration: BoxDecoration(
           color: isDone ? widget.taskCardBg.withValues(alpha: 0.84) : widget.taskCardBg,
-          borderRadius: BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(15),
           border: Border.all(
             color: _hovered ? hoverBorderColor : baseBorderColor,
             width: _hovered ? 1.4 : (isOverdue ? 1.3 : 1.1),
@@ -3986,17 +4481,36 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 9,
-                        backgroundColor: widget.getAvatarColor(workerName),
-                        child: Text(
-                          workerName.isNotEmpty ? workerName[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            fontSize: 8.5,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(
+                            radius: 9,
+                            backgroundColor: widget.getAvatarColor(workerName),
+                            child: Text(
+                              workerName.isNotEmpty ? workerName[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontSize: 8.5,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (task['assignees'] is List && (task['assignees'] as List).length > 1) ...[
+                            const SizedBox(width: 3),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '+${(task['assignees'] as List).length - 1}',
+                                style: const TextStyle(color: Color(0xFF10B981), fontSize: 8.5, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(width: 6),
                       Expanded(
@@ -4044,6 +4558,286 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ================= 📱 ULTRA-COMPACT MOBILE LIST ITEM (DESIGN B) =================
+  Widget _buildMobileCompactListItem({
+    required BuildContext context,
+    required dynamic task,
+    required String status,
+    required bool isDone,
+    required bool isOverdue,
+    required String priority,
+    required Color priorityColor,
+    required String workerName,
+    required List<dynamic> subtasks,
+    required int doneSubtasks,
+    required String nextStatus,
+    required Color mobileTextTitle,
+    required Color mobileTextSub,
+  }) {
+    DateTime? due;
+    if (task['due_date'] != null) {
+      try {
+        due = DateTime.parse(task['due_date'].toString());
+      } catch (_) {}
+    }
+
+    final assignees = (task['assignees'] is List) ? (task['assignees'] as List) : [];
+    final assigneesCount = assignees.length;
+
+    String? dueLabel;
+    Color dueColor = mobileTextSub;
+    if (due != null) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      dueLabel = '${due.day} ${months[due.month - 1]}';
+      if (isDone) {
+        dueColor = const Color(0xFF10B981);
+      } else if (isOverdue) {
+        dueColor = const Color(0xFFEF4444);
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 7),
+      decoration: BoxDecoration(
+        color: isDone
+            ? (widget.isDark ? const Color(0xFF1E293B).withValues(alpha: 0.5) : const Color(0xFFF4F4F5))
+            : (widget.isDark ? const Color(0xFF1E293B) : const Color(0xFFFFFFFF)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isOverdue
+              ? const Color(0xFFEF4444).withValues(alpha: 0.35)
+              : (widget.isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE4E4E7)),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: widget.isDark ? 0.22 : 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 1.5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: widget.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8.5),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 1. Status Toggle Check Icon
+                InkWell(
+                  onTap: () => widget.onStatusChange(task['task_id'], nextStatus),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 9, top: 1, bottom: 1),
+                    child: Icon(
+                      isDone
+                          ? Icons.check_circle_rounded
+                          : (status == 'IN_PROGRESS'
+                              ? Icons.timelapse_rounded
+                              : Icons.radio_button_unchecked_rounded),
+                      size: 21,
+                      color: isDone
+                          ? (widget.isDark ? Colors.white : const Color(0xFF18181B))
+                          : (status == 'IN_PROGRESS' ? const Color(0xFFF59E0B) : (widget.isDark ? Colors.white54 : const Color(0xFF71717A))),
+                    ),
+                  ),
+                ),
+
+                // 2. Middle Content (Title + Meta row)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Line 1: Title (#09090B)
+                      Text(
+                        task['title'] ?? 'Untitled',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isDone
+                              ? (widget.isDark ? Colors.white38 : const Color(0xFF71717A))
+                              : (widget.isDark ? Colors.white : const Color(0xFF09090B)),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13.5,
+                          letterSpacing: -0.2,
+                          decoration: isDone ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      // Line 2: Meta Info (Body #52525B, Muted #71717A)
+                      Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(color: priorityColor, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            priority,
+                            style: TextStyle(
+                              color: priorityColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (task['task_id'] != null) ...[
+                            Text(' · ', style: TextStyle(color: widget.isDark ? Colors.white38 : const Color(0xFF71717A), fontSize: 10)),
+                            Text('#${task['task_id']}', style: TextStyle(color: widget.isDark ? Colors.white60 : const Color(0xFF71717A), fontSize: 10, fontWeight: FontWeight.w500)),
+                          ],
+                          if (subtasks.isNotEmpty) ...[
+                            Text(' · ', style: TextStyle(color: widget.isDark ? Colors.white38 : const Color(0xFF71717A), fontSize: 10)),
+                            Icon(Icons.checklist_rounded, size: 11, color: doneSubtasks == subtasks.length ? (widget.isDark ? Colors.white : const Color(0xFF18181B)) : (widget.isDark ? Colors.white60 : const Color(0xFF52525B))),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$doneSubtasks/${subtasks.length}',
+                              style: TextStyle(
+                                color: doneSubtasks == subtasks.length ? (widget.isDark ? Colors.white : const Color(0xFF18181B)) : (widget.isDark ? Colors.white70 : const Color(0xFF52525B)),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          if (workerName.isNotEmpty) ...[
+                            Text(' · ', style: TextStyle(color: widget.isDark ? Colors.white38 : const Color(0xFF71717A), fontSize: 10)),
+                            Flexible(
+                              child: Text(
+                                workerName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF52525B), fontSize: 10.5),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // 3. Right: Due Date Chip (#F4F4F5 / #E4E4E7)
+                if (dueLabel != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: isOverdue
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.12)
+                          : (widget.isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF4F4F5)),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isOverdue
+                            ? const Color(0xFFEF4444).withValues(alpha: 0.25)
+                            : (widget.isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE4E4E7)),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      dueLabel,
+                      style: TextStyle(
+                        color: isOverdue
+                            ? const Color(0xFFEF4444)
+                            : (widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF52525B)),
+                        fontSize: 10,
+                        fontWeight: isOverdue ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+
+                // 4. Right: Worker Avatar (+1 count badge)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 10,
+                      backgroundColor: widget.getAvatarColor(workerName),
+                      child: Text(
+                        workerName.isNotEmpty ? workerName[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (assigneesCount > 1) ...[
+                      const SizedBox(width: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: widget.isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFF4F4F5),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: widget.isDark ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFE4E4E7),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          '+${assigneesCount - 1}',
+                          style: TextStyle(
+                            color: widget.isDark ? Colors.white : const Color(0xFF09090B),
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+
+                // 5. Right: 3-dots Menu for Edit / Delete
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert_rounded, size: 16, color: widget.isDark ? Colors.white54 : const Color(0xFF71717A)),
+                  splashRadius: 14,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  tooltip: 'Options',
+                  onSelected: (val) {
+                    if (val == 'edit') widget.onEdit();
+                    if (val == 'delete') widget.onDelete();
+                  },
+                  itemBuilder: (ctx) => [
+                    PopupMenuItem(
+                      value: 'edit',
+                      height: 36,
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_outlined, size: 15, color: widget.isDark ? Colors.white : const Color(0xFF18181B)),
+                          const SizedBox(width: 8),
+                          const Text('Edit Task', style: TextStyle(fontSize: 12.5)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      height: 36,
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded, size: 15, color: Colors.redAccent),
+                          SizedBox(width: 8),
+                          Text('Delete Task', style: TextStyle(fontSize: 12.5, color: Colors.redAccent)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
