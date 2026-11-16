@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep in sync with SplashColors.background in splash_screen.dart. -->
+    <color name="splash_background">#FFC800</color>
+</resources>

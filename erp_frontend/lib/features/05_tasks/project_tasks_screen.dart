@@ -72,6 +72,9 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadUserPermissions(); // 🟢 Yahan permissions load karein
   }
 
@@ -3638,6 +3641,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           controller: _tabController,
           isScrollable: true,
           tabAlignment: TabAlignment.start,
+          onTap: (_) => setState(() {}),
           labelColor: const Color(0xFF10B981),
           unselectedLabelColor: textSub,
           indicatorColor: const Color(0xFF10B981),
@@ -3656,17 +3660,30 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         if (_isLoadingDetails)
           const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: Color(0xFF10B981))))
         else
-          SizedBox(
-            height: 650,
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildProjectTasksTab(cardBg, cardBorder, textTitle, textSub),
-                _buildProjectTeamTab(cardBg, cardBorder, textTitle, textSub),
-                _buildProjectTimesheetTab(cardBg, cardBorder, textTitle, textSub),
-                _buildProjectComponentsTab(cardBg, cardBorder, textTitle, textSub),
-              ],
-            ),
+          Builder(
+            builder: (context) {
+              Widget tabContent;
+              switch (_tabController.index) {
+                case 0:
+                  tabContent = _buildProjectTasksTab(cardBg, cardBorder, textTitle, textSub);
+                  break;
+                case 1:
+                  tabContent = _buildProjectTeamTab(cardBg, cardBorder, textTitle, textSub);
+                  break;
+                case 2:
+                  tabContent = _buildProjectTimesheetTab(cardBg, cardBorder, textTitle, textSub);
+                  break;
+                case 3:
+                  tabContent = _buildProjectComponentsTab(cardBg, cardBorder, textTitle, textSub);
+                  break;
+                default:
+                  tabContent = _buildProjectTasksTab(cardBg, cardBorder, textTitle, textSub);
+              }
+              return Padding(
+                padding: EdgeInsets.only(bottom: isMobile ? 80 : 32),
+                child: tabContent,
+              );
+            },
           ),
       ],
     );
@@ -3707,11 +3724,10 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     final inProgressCount = allTasks.where((t) => t['status'] == 'IN_PROGRESS').length;
     final doneCount = allTasks.where((t) => t['status'] == 'DONE').length;
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. CLEAN SEARCH & FILTER ROW (Directly on page, no wrapper card!)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. CLEAN SEARCH & FILTER ROW (Directly on page, no wrapper card!)
           if (isMobile) ...[
             // Mobile: Search on top
             TextField(
@@ -3834,8 +3850,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               },
             ),
         ],
-      ),
-    );
+      );
   }
   // Filter Chip Helper
   Widget _buildStatusFilterChip(String key, String label) {
@@ -3872,6 +3887,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     return members.isEmpty
         ? Center(child: Text('No team members assigned yet.', style: TextStyle(color: textSub)))
         : GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 320, mainAxisExtent: 76, crossAxisSpacing: 14, mainAxisSpacing: 14),
       itemCount: members.length,
       itemBuilder: (context, idx) {
@@ -3921,6 +3938,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     return timesheets.isEmpty
         ? Center(child: Text('No work hours logged yet for this project.', style: TextStyle(color: textSub)))
         : ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: timesheets.length,
       itemBuilder: (context, idx) {
         final ts = timesheets[idx];
@@ -3955,10 +3974,9 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     final isDark = ThemeController.isDarkMode.value;
     final itemBg = isDark ? const Color(0xFF0F172A) : Colors.white;
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           // Top Toolbar: Header + Add Component Button
           Row(
             children: [
@@ -4081,8 +4099,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               },
             ),
         ],
-      ),
-    );
+      );
   }
 }
 
@@ -4130,6 +4147,16 @@ class _ProjectUnitCardState extends State<_ProjectUnitCard> {
     final totalTasks = prj['total_tasks'] ?? 0;
     final completedTasks = prj['completed_tasks'] ?? 0;
     final progress = totalTasks > 0 ? (completedTasks / totalTasks) : 0.0;
+    // 🎨 Progress % ke hisaab se dynamic colorful shades:
+    final Color progressBarColor = progress >= 1.0
+        ? const Color(0xFF10B981) // 🟢 100% Done: Emerald Green
+        : progress >= 0.70
+        ? const Color(0xFF0EA5E9) // 🔵 70% - 99%: Sky / Cyan Blue
+        : progress >= 0.40
+        ? const Color(0xFF8B5CF6) // 🟣 40% - 69%: Royal Purple
+        : progress > 0.0
+        ? const Color(0xFFF59E0B) // 🟠 1% - 39%: Amber Orange
+        : const Color(0xFF94A3B8); // ⚪ 0% (Not started): Soft Slate Gray
     final isDark = widget.isDark;
     final textTitle = widget.textTitle;
     final textSub = widget.textSub;
@@ -4343,8 +4370,10 @@ class _ProjectUnitCardState extends State<_ProjectUnitCard> {
                         child: LinearProgressIndicator(
                           value: progress,
                           minHeight: 6,
-                          backgroundColor: Colors.white.withValues(alpha: 0.1),
-                          valueColor: const AlwaysStoppedAnimation(Color(0xFF10B981)),
+                          backgroundColor: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : const Color(0xFFE2E8F0),
+                          valueColor: AlwaysStoppedAnimation<Color>(progressBarColor),
                         ),
                       ),
                     ],

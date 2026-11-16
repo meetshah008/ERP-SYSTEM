@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'core/network/session_manager.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/00_splash/splash_screen.dart';
 import 'features/02_auth/login_screen.dart';
 import 'features/03_dashboard/admin_dashboard_screen.dart';
 
@@ -62,10 +63,46 @@ class ManufacturingErpApp extends StatelessWidget {
               child: child ?? const SizedBox.shrink(),
             );
           },
-          // Check session on start: Auto-login to Dashboard if token exists!
-          home: const AuthGate(),
+          // The splash only covers the home route on a cold start. Navigating
+          // away from here does not replay it.
+          home: const _ColdStartSplash(child: AuthGate()),
         );
       },
+    );
+  }
+}
+
+/// Plays the animated splash over the real first screen.
+///
+/// [child] is built immediately behind the splash, so when the circle reveal
+/// finishes there is already a painted screen underneath and nothing pops in.
+class _ColdStartSplash extends StatefulWidget {
+  const _ColdStartSplash({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ColdStartSplash> createState() => _ColdStartSplashState();
+}
+
+class _ColdStartSplashState extends State<_ColdStartSplash> {
+  bool _showSplash = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        widget.child,
+        if (_showSplash)
+          SplashScreen(
+            onFinished: () {
+              if (mounted) {
+                setState(() => _showSplash = false);
+              }
+            },
+          ),
+      ],
     );
   }
 }

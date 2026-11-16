@@ -41,7 +41,7 @@ exports.createTask = async (req, res) => {
     }
 
     if (assigneeList.length === 0 || !title) {
-      return res.status(400).json({ success: false, message: 'Kam se kam 1 Assignee aur Task ka Title zaroori hai!' });
+      return res.status(400).json({ success: false, message: 'At least 1 Assignee and Task Title are required!' });
     }
 
     const primaryAssignee = assigneeList[0];
@@ -64,7 +64,7 @@ exports.createTask = async (req, res) => {
             if (eu.user_id) {
               await sendNotification({
                 title: 'New Task Assigned 📋',
-                message: `Aapko naya task "${title}" assign kiya gaya hai (Priority: ${priority || 'MEDIUM'}).`,
+                message: `You have been assigned a new task "${title}" (Priority: ${priority || 'MEDIUM'}).`,
                 type: 'TASK_ASSIGNED',
                 referenceId: taskId,
                 targetUserId: eu.user_id
@@ -148,9 +148,17 @@ exports.getTasks = async (req, res) => {
           WHERE (
             t.assigned_to = ?
             OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
+            OR EXISTS (
+              SELECT 1 FROM project_member pm
+              WHERE pm.project_id = t.project_id AND pm.employee_id = ?
+            )
+            OR EXISTS (
+              SELECT 1 FROM project pr
+              WHERE pr.project_id = t.project_id AND (pr.project_leader_id = ? OR pr.head_user_id = ?)
+            )
           )
         `;
-        params.push(empId, empId);
+        params.push(empId, empId, empId, empId, empId);
       } else {
         // Non-admin employee jiska koi employee record linked nahi hai
         query += ` WHERE 1 = 0 `;
@@ -204,7 +212,7 @@ exports.getTaskDetails = async (req, res) => {
     );
 
     if (tasks.length === 0) {
-      return res.status(404).json({ success: false, message: 'Task nahi mila!' });
+      return res.status(404).json({ success: false, message: 'Task not found!' });
     }
 
     const task = tasks[0];
@@ -278,7 +286,7 @@ exports.updateTask = async (req, res) => {
     }
 
     if (!title || assigneeList.length === 0) {
-      return res.status(400).json({ success: false, message: 'Kam se kam 1 Assignee aur Title zaroori hain!' });
+      return res.status(400).json({ success: false, message: 'At least 1 Assignee and Title are required!' });
     }
 
     const primaryAssignee = assigneeList[0];
@@ -332,7 +340,7 @@ exports.deleteTask = async (req, res) => {
     const [result] = await db.query('DELETE FROM task WHERE task_id = ?', [id]);
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Task nahi mila!' });
+      return res.status(404).json({ success: false, message: 'Task not found!' });
     }
 
     return res.status(200).json({ success: true, message: 'Task deleted successfully!' });

@@ -45,7 +45,7 @@ exports.createProject = async (req, res) => {
     } = req.body;
 
     if (!project_code || !project_name) {
-      return res.status(400).json({ success: false, message: 'Project Code aur Name zaroori hain!' });
+      return res.status(400).json({ success: false, message: 'Project Code and Name are required!' });
     }
 
     // A. Project table mein entry daali
@@ -106,7 +106,7 @@ exports.createProject = async (req, res) => {
             const isLeader = eu.employee_id === project_leader_id;
             await sendNotification({
               title: isLeader ? 'New Project Assigned as Leader 🚀' : 'Added to Project 🚀',
-              message: `Aapko project "${project_name}" (${project_code}) mein ${isLeader ? 'Project Leader' : 'Team Member'} ke roop mein assign kiya gaya hai.`,
+              message: `You have been assigned to project "${project_name}" (${project_code}) as ${isLeader ? 'Project Leader' : 'Team Member'}.`,
               type: 'PROJECT_ASSIGNED',
               referenceId: projectId,
               targetUserId: eu.user_id
@@ -234,7 +234,7 @@ exports.getProjectDetails = async (req, res) => {
     `, [id]);
 
     if (prj.length === 0) {
-      return res.status(404).json({ success: false, message: 'Project nahi mila!' });
+      return res.status(404).json({ success: false, message: 'Project not found!' });
     }
 
     // B. Team Members
@@ -245,23 +245,14 @@ exports.getProjectDetails = async (req, res) => {
       WHERE pm.project_id = ?
     `, [id]);
 
-    // C. Tasks aur unke Subtasks (Agar employee login hai aur leader/head nahi hai toh sirf uske assigned tasks)
-    let taskQuery = `
+    // C. Tasks aur unke Subtasks (All project team members see all tasks of the project)
+    const [tasks] = await db.query(`
       SELECT t.*, e.full_name as assigned_worker, e.emp_code
       FROM task t
       LEFT JOIN employee e ON t.assigned_to = e.employee_id
       WHERE t.project_id = ?
-    `;
-    const taskParams = [id];
-
-    const isProjectManager = isSuperAdmin || (empId && (prj[0].project_leader_id === empId || prj[0].head_user_id === empId));
-    if (!isProjectManager && empId) {
-      taskQuery += ` AND (t.assigned_to = ? OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?))`;
-      taskParams.push(empId, empId);
-    }
-    taskQuery += ` ORDER BY t.task_id DESC`;
-
-    const [tasks] = await db.query(taskQuery, taskParams);
+      ORDER BY t.task_id DESC
+    `, [id]);
 
     // Har task ke subtasks aur assignees attach karna
     for (const task of tasks) {
@@ -321,7 +312,7 @@ exports.createProjectTask = async (req, res) => {
     const { title, description, assigned_to, priority, due_date, estimated_hours, subtasks } = req.body;
 
     if (!title || !assigned_to) {
-      return res.status(400).json({ success: false, message: 'Title aur Worker select karna zaroori hai!' });
+      return res.status(400).json({ success: false, message: 'Task title and assignee are required!' });
     }
 
     const [taskRes] = await db.query(`
@@ -377,7 +368,7 @@ exports.addSubtask = async (req, res) => {
     const { title } = req.body;
 
     if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'Subtask title zaroori hai!' });
+      return res.status(400).json({ success: false, message: 'Subtask title is required!' });
     }
 
     const [result] = await db.query(
@@ -402,7 +393,7 @@ exports.logTimesheet = async (req, res) => {
     const { task_id, employee_id, log_date, hours_spent, description } = req.body;
 
     if (!employee_id || !hours_spent) {
-      return res.status(400).json({ success: false, message: 'Worker aur Hours zaroori hain!' });
+      return res.status(400).json({ success: false, message: 'Worker and logged hours are required!' });
     }
 
     await db.query(`
@@ -430,7 +421,7 @@ exports.addProjectMaterial = async (req, res) => {
     const { material_name, unit, quantity_required, cost_per_unit } = req.body;
 
     if (!material_name || !quantity_required) {
-      return res.status(400).json({ success: false, message: 'Material Name aur Quantity zaroori hain!' });
+      return res.status(400).json({ success: false, message: 'Material name and quantity are required!' });
     }
 
     await db.query(`
@@ -539,10 +530,10 @@ exports.deleteProject = async (req, res) => {
     const [result] = await db.query(`DELETE FROM project WHERE project_id = ?`, [id]);
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Project nahi mila!' });
+      return res.status(404).json({ success: false, message: 'Project not found!' });
     }
 
-    return res.status(200).json({ success: true, message: 'Project aur uske saare tasks safely delete ho gaye!' });
+    return res.status(200).json({ success: true, message: 'Project and associated tasks deleted successfully!' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -555,7 +546,7 @@ exports.deleteSubtask = async (req, res) => {
     const [result] = await db.query(`DELETE FROM task_subtask WHERE subtask_id = ?`, [subtaskId]);
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Subtask nahi mila!' });
+      return res.status(404).json({ success: false, message: 'Subtask not found!' });
     }
 
     return res.status(200).json({ success: true, message: 'Subtask deleted successfully!' });
@@ -571,7 +562,7 @@ exports.deleteProjectMaterial = async (req, res) => {
     const [result] = await db.query(`DELETE FROM project_material WHERE material_id = ?`, [materialId]);
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Component nahi mila!' });
+      return res.status(404).json({ success: false, message: 'Component not found!' });
     }
 
     return res.status(200).json({ success: true, message: 'Component successfully removed!' });
