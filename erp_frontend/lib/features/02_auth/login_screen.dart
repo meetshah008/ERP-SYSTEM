@@ -68,6 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
         companyName: user['companyName'] ?? 'Manufacturing Co',
         userId: user['id'],
         companyId: user['companyId'],
+        employeeId: user['employee_id'],
         permissions: permissions, // <-- Yeh pass karo
       );
 

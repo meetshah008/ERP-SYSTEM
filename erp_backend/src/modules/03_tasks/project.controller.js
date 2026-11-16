@@ -1,5 +1,32 @@
 const db = require('../../config/db');
 
+// Notification table check and send helper
+const sendNotification = async ({ companyId = 1, title, message, type, referenceId, targetUserId }) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS NOTIFICATION (
+        notification_id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL DEFAULT 1,
+        title VARCHAR(150) NOT NULL,
+        message TEXT NOT NULL,
+        type VARCHAR(50) DEFAULT 'GENERAL',
+        reference_id INT DEFAULT NULL,
+        target_user_id INT DEFAULT NULL,
+        target_role VARCHAR(50) DEFAULT NULL,
+        sender_user_id INT DEFAULT NULL,
+        is_read TINYINT(1) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.query(`
+      INSERT INTO NOTIFICATION (company_id, title, message, type, reference_id, target_user_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [companyId, title, message, type, referenceId, targetUserId]);
+  } catch (err) {
+    console.warn('Notification send failed:', err.message);
+  }
+};
+
 // 1. NAYA PROJECT CREATE KARNA (Leader & Team ke sath)
 exports.createProject = async (req, res) => {
   try {
@@ -62,6 +89,35 @@ exports.createProject = async (req, res) => {
       );
     }
 
+    // D. Notification bhejna (Project Leader & Members ko)
+    try {
+      const notifiedUserIds = new Set();
+      const allEmpIds = [...(member_ids || [])];
+      if (project_leader_id) allEmpIds.push(project_leader_id);
+
+      if (allEmpIds.length > 0) {
+        const [empUsers] = await db.query(
+          `SELECT employee_id, user_id FROM EMPLOYEE WHERE employee_id IN (?)`,
+          [allEmpIds]
+        );
+        for (const eu of empUsers) {
+          if (eu.user_id && !notifiedUserIds.has(eu.user_id)) {
+            notifiedUserIds.add(eu.user_id);
+            const isLeader = eu.employee_id === project_leader_id;
+            await sendNotification({
+              title: isLeader ? 'New Project Assigned as Leader 🚀' : 'Added to Project 🚀',
+              message: `Aapko project "${project_name}" (${project_code}) mein ${isLeader ? 'Project Leader' : 'Team Member'} ke roop mein assign kiya gaya hai.`,
+              type: 'PROJECT_ASSIGNED',
+              referenceId: projectId,
+              targetUserId: eu.user_id
+            });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Project notification error:', notifErr.message);
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Project created successfully with Team Leader and Members!',
@@ -75,7 +131,32 @@ exports.createProject = async (req, res) => {
 // 2. SAARE PROJECTS KI LIST LANA (Dashboard ke cards ke liye)
 exports.getProjects = async (req, res) => {
   try {
-    const [projects] = await db.query(`
+    const { employee_id, user_id, role } = req.query;
+    const userRole = role || req.user?.role || req.user?.role_name;
+    const isSuperAdmin = userRole === 'Super Admin' || userRole === 'admin';
+
+    // Agar role ya employee_id ya user_id explicitly bheja hai tabhi filtering karenge
+    const isFilteringRequested = Boolean(role || employee_id || user_id);
+
+    let empId = employee_id ? parseInt(employee_id, 10) : (req.user?.employeeId || null);
+
+    // Agar employee_id nahi mila par user_id mila hai, toh employee dhundo
+    if (isFilteringRequested && !isSuperAdmin && !empId && (user_id || req.user?.id || req.user?.userId)) {
+      const uId = user_id || req.user?.id || req.user?.userId;
+      try {
+        const [empRows] = await db.query(
+          'SELECT employee_id FROM employee WHERE user_id = ? LIMIT 1',
+          [uId]
+        );
+        if (empRows.length > 0) {
+          empId = empRows[0].employee_id;
+        }
+      } catch (err) {
+        console.warn('Error finding employee by user_id in getProjects:', err.message);
+      }
+    }
+
+    let query = `
       SELECT
         p.*,
         leader.full_name as leader_name,
@@ -88,9 +169,35 @@ exports.getProjects = async (req, res) => {
       LEFT JOIN employee leader ON p.project_leader_id = leader.employee_id
       LEFT JOIN employee head ON p.head_user_id = head.employee_id
       LEFT JOIN department dept ON p.department_id = dept.department_id
-      ORDER BY p.project_id DESC
-    `);
+    `;
 
+    const params = [];
+
+    // Agar filtering requested hai aur non-super-admin employee hai
+    if (isFilteringRequested && !isSuperAdmin) {
+      if (empId) {
+        query += `
+          WHERE (
+            p.project_leader_id = ?
+            OR p.head_user_id = ?
+            OR EXISTS (SELECT 1 FROM project_member pm WHERE pm.project_id = p.project_id AND pm.employee_id = ?)
+            OR EXISTS (
+              SELECT 1 FROM task t
+              LEFT JOIN task_assignees ta ON t.task_id = ta.task_id
+              WHERE t.project_id = p.project_id AND (t.assigned_to = ? OR ta.employee_id = ?)
+            )
+          )
+        `;
+        params.push(empId, empId, empId, empId, empId);
+      } else {
+        // Non-admin employee jiska koi employee record linked nahi hai
+        query += ` WHERE 1 = 0 `;
+      }
+    }
+
+    query += ` ORDER BY p.project_id DESC`;
+
+    const [projects] = await db.query(query, params);
     return res.status(200).json({ success: true, data: projects });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -101,6 +208,21 @@ exports.getProjects = async (req, res) => {
 exports.getProjectDetails = async (req, res) => {
   try {
     const { id } = req.params;
+    const { employee_id, user_id, role } = req.query;
+    const userRole = role || req.user?.role || req.user?.role_name;
+    const isSuperAdmin = userRole === 'Super Admin' || userRole === 'admin';
+
+    let empId = employee_id ? parseInt(employee_id, 10) : (req.user?.employeeId || null);
+    if (!empId && (user_id || req.user?.id || req.user?.userId)) {
+      const uId = user_id || req.user?.id || req.user?.userId;
+      try {
+        const [empRows] = await db.query(
+          'SELECT employee_id FROM employee WHERE user_id = ? LIMIT 1',
+          [uId]
+        );
+        if (empRows.length > 0) empId = empRows[0].employee_id;
+      } catch (_) {}
+    }
 
     // A. Project Info
     const [prj] = await db.query(`
@@ -123,14 +245,23 @@ exports.getProjectDetails = async (req, res) => {
       WHERE pm.project_id = ?
     `, [id]);
 
-    // C. Tasks aur unke Subtasks
-    const [tasks] = await db.query(`
+    // C. Tasks aur unke Subtasks (Agar employee login hai aur leader/head nahi hai toh sirf uske assigned tasks)
+    let taskQuery = `
       SELECT t.*, e.full_name as assigned_worker, e.emp_code
       FROM task t
       LEFT JOIN employee e ON t.assigned_to = e.employee_id
       WHERE t.project_id = ?
-      ORDER BY t.task_id DESC
-    `, [id]);
+    `;
+    const taskParams = [id];
+
+    const isProjectManager = isSuperAdmin || (empId && (prj[0].project_leader_id === empId || prj[0].head_user_id === empId));
+    if (!isProjectManager && empId) {
+      taskQuery += ` AND (t.assigned_to = ? OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?))`;
+      taskParams.push(empId, empId);
+    }
+    taskQuery += ` ORDER BY t.task_id DESC`;
+
+    const [tasks] = await db.query(taskQuery, taskParams);
 
     // Har task ke subtasks aur assignees attach karna
     for (const task of tasks) {

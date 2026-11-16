@@ -12,6 +12,8 @@ class SessionManager {
   static const String keyUserId = 'user_id';
   static const String keyCompanyId = 'company_id';
   static const String keyPermissions = 'user_permissions';
+  static const String keyEmployeeId = 'employee_id';
+
 
   // 1. LOGIN HONE PAR DATA SAVE KARNA
   static Future<void> saveSession({
@@ -21,6 +23,7 @@ class SessionManager {
     required String companyName,
     int? userId,
     int? companyId,
+    int? employeeId,
     Map<String, dynamic>? permissions, // <-- Naya parameter
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -31,6 +34,7 @@ class SessionManager {
     await prefs.setString(keyCompanyName, companyName);
     if (userId != null) await prefs.setInt(keyUserId, userId);
     if (companyId != null) await prefs.setInt(keyCompanyId, companyId);
+    if (employeeId != null) await prefs.setInt(keyEmployeeId, employeeId);
     if (permissions != null) {
       await prefs.setString(keyPermissions, jsonEncode(permissions));
     }
@@ -79,6 +83,7 @@ class SessionManager {
       'companyName': prefs.getString(keyCompanyName) ?? '',
       'userId': prefs.getInt(keyUserId),
       'companyId': prefs.getInt(keyCompanyId),
+      'employeeId': prefs.getInt(keyEmployeeId),
     };
   }
 

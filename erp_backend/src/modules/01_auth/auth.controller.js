@@ -129,9 +129,26 @@ exports.login = async (req, res) => {
     // Update last login
     await db.query('UPDATE USER SET last_login = NOW() WHERE user_id = ?', [user.user_id]);
 
+    // 🔍 Resolve / Link Employee Record
+    let employeeId = null;
+    try {
+      const [empRows] = await db.query(
+        'SELECT employee_id, user_id FROM EMPLOYEE WHERE user_id = ? OR email = ? LIMIT 1',
+        [user.user_id, user.email]
+      );
+      if (empRows.length > 0) {
+        employeeId = empRows[0].employee_id;
+        if (!empRows[0].user_id) {
+          await db.query('UPDATE EMPLOYEE SET user_id = ? WHERE employee_id = ?', [user.user_id, employeeId]);
+        }
+      }
+    } catch (e) {
+      console.warn('Error resolving employee record:', e.message);
+    }
+
     // Issue Token
     const token = jwt.sign(
-      { userId: user.user_id, companyId: user.company_id, role: user.role_name },
+      { userId: user.user_id, companyId: user.company_id, role: user.role_name, employeeId },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
@@ -150,6 +167,11 @@ exports.login = async (req, res) => {
             leaves_approve: true,
             tasks_view: true,
             tasks_create_assign: true,
+        tasks_edit: true,
+        tasks_delete: true,
+        projects_create: true,
+        projects_edit: true,
+        projects_delete: true,
             tasks_log_timesheet: true,
             inventory_view_stock: true,
             inventory_manage_material: true,
@@ -172,6 +194,11 @@ exports.login = async (req, res) => {
             leaves_approve: isManager,
             tasks_view: true,
             tasks_create_assign: isManager,
+        tasks_edit: isManager,
+        tasks_delete: false,
+        projects_create: isManager,
+        projects_edit: isManager,
+        projects_delete: false,
             tasks_log_timesheet: true,
             inventory_view_stock: true,
             inventory_manage_material: isManager,
@@ -210,21 +237,23 @@ exports.login = async (req, res) => {
           }
         }
 
-    return res.status(200).json({
-      success: true,
-      message: 'Login successful!',
-      data: {
-        token,
-        user: {
-          id: user.user_id,
-          email: user.email,
-          role: user.role_name,
-          companyId: user.company_id,
-          companyName: user.company_name
-        },
-        permissions
-      }
-    });
+   return res.status(200).json({
+     success: true,
+     message: 'Login successful!',
+     data: {
+       token,
+       user: {
+         id: user.user_id,
+         email: user.email,
+         role: user.role_name,
+         companyId: user.company_id,
+         companyName: user.company_name,
+
+         employee_id: employeeId
+       },
+       permissions
+     }
+   });
 
   } catch (error) {
     console.error('Login Error:', error);

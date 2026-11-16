@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../../core/network/session_manager.dart';
+import '../../core/network/api_client.dart';
 import 'employee_edit_screen.dart';
 
 class EmployeeDetailsScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class EmployeeDetailsScreen extends StatefulWidget {
 
 class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     with SingleTickerProviderStateMixin {
+  static String get _apiHost => ApiClient.apiHost;
   late TabController _tabController;
   bool _isLoading = true;
   bool _isSavingPermissions = false;
@@ -97,7 +99,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     try {
       final res = await http.get(
         Uri.parse(
-          'http://localhost:5000/api/hr/employees/${widget.employeeId}/full-profile',
+          '$_apiHost/api/hr/employees/${widget.employeeId}/full-profile',
         ),
       );
       if (res.statusCode == 200) {
@@ -129,7 +131,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
       // Fetch departments for edit modal
       try {
         final deptRes = await http.get(
-          Uri.parse('http://localhost:5000/api/hr/departments'),
+          Uri.parse('$_apiHost/api/hr/departments'),
         );
         if (deptRes.statusCode == 200) {
           final deptJson = jsonDecode(deptRes.body);
@@ -150,7 +152,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     setState(() => _isLoadingAttendance = true);
     try {
       String url =
-          'http://localhost:5000/api/hr/attendance?employee_id=${widget.employeeId}&';
+          '$_apiHost/api/hr/attendance?employee_id=${widget.employeeId}&';
       if (_attCustomRange != null) {
         final start = _attCustomRange!.start.toIso8601String().split('T')[0];
         final end = _attCustomRange!.end.toIso8601String().split('T')[0];
@@ -438,7 +440,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                             try {
                               final res = await http.put(
                                 Uri.parse(
-                                  'http://localhost:5000/api/hr/attendance/$attendanceId',
+                                  '$_apiHost/api/hr/attendance/$attendanceId',
                                 ),
                                 headers: {'Content-Type': 'application/json'},
                                 body: jsonEncode({
@@ -503,7 +505,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     try {
       final res = await http.put(
         Uri.parse(
-          'http://localhost:5000/api/hr/employees/${widget.employeeId}/permissions',
+          '$_apiHost/api/hr/employees/${widget.employeeId}/permissions',
         ),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -846,7 +848,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                     try {
                                       final res = await http.post(
                                         Uri.parse(
-                                          'http://localhost:5000/api/hr/employees/${widget.employeeId}/create-login',
+                                          '$_apiHost/api/hr/employees/${widget.employeeId}/create-login',
                                         ),
                                         headers: {
                                           'Content-Type': 'application/json',
@@ -2700,9 +2702,44 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
               textSub,
             ),
             _buildPermissionSwitch(
+              'projects_create',
+              'Create New Projects',
+              'Initiate and set up new project workspaces',
+              textTitle,
+              textSub,
+            ),
+            _buildPermissionSwitch(
+              'projects_edit',
+              'Edit Projects & Settings',
+              'Modify project details, deadline & members',
+              textTitle,
+              textSub,
+            ),
+            _buildPermissionSwitch(
+              'projects_delete',
+              'Delete Projects',
+              'Permanently remove project workspaces',
+              textTitle,
+              textSub,
+            ),
+            _buildPermissionSwitch(
               'tasks_create_assign',
               'Create Tasks & Assign Members',
               'Distribute workloads to team',
+              textTitle,
+              textSub,
+            ),
+            _buildPermissionSwitch(
+              'tasks_edit',
+              'Edit Tasks',
+              'Update task title, description & priority',
+              textTitle,
+              textSub,
+            ),
+            _buildPermissionSwitch(
+              'tasks_delete',
+              'Delete Tasks',
+              'Permanently remove tasks',
               textTitle,
               textSub,
             ),

@@ -126,8 +126,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         }
       }
 
+      // Resolve session context for role-based dashboard metrics
+      final session = await SessionManager.getUserSession();
+      final role = widget.role.isNotEmpty ? widget.role : (session['role'] as String? ?? 'Super Admin');
+      final empId = session['employeeId'];
+      final userId = session['userId'];
+
+      final queryParts = <String>[];
+      if (role != 'Super Admin') {
+        if (empId != null) queryParts.add('employee_id=$empId');
+        if (userId != null) queryParts.add('user_id=$userId');
+      }
+      queryParts.add('role=${Uri.encodeComponent(role)}');
+      final queryString = queryParts.isNotEmpty ? '?${queryParts.join('&')}' : '';
+
       // 2. Tasks count (TODO ya IN_PROGRESS)
-      final taskRes = await http.get(Uri.parse('$_apiHost/api/tasks'));
+      final taskRes = await http.get(Uri.parse('$_apiHost/api/tasks$queryString'));
       if (taskRes.statusCode == 200) {
         final taskData = jsonDecode(taskRes.body);
         if (taskData['success'] == true && taskData['data'] is List) {
@@ -157,7 +171,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       } catch (_) {}
       // 5. Projects Fetch Karna & Stats Calculate Karna
       try {
-        final prjRes = await http.get(Uri.parse('$_apiHost/api/projects'));
+        final prjRes = await http.get(Uri.parse('$_apiHost/api/projects$queryString'));
         if (prjRes.statusCode == 200) {
           final prjData = jsonDecode(prjRes.body);
           if (prjData['success'] == true && prjData['data'] is List) {

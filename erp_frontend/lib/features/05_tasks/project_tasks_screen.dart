@@ -4,12 +4,13 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:flutter/gestures.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/network/api_client.dart';
 import 'task_details_screen.dart';
 import 'project_edit_screen.dart';
 import 'task_form_screen.dart';
-
+import '../../core/network/session_manager.dart';
 
 class ProjectTasksScreen extends StatefulWidget {
   const ProjectTasksScreen({super.key});
@@ -29,6 +30,14 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   List<dynamic> _employees = [];
   List<dynamic> _departments = [];
   bool _isLoading = true;
+  int? _currentEmployeeId;
+  String _currentUserRole = '';
+  bool _canCreateProject = true;
+  bool _canEditProject = true;
+  bool _canDeleteProject = true;
+  bool _canCreateTask = true;
+  bool _canEditTask = true;
+  bool _canDeleteTask = true;
 
   // Projects View: Search & Department Filter
   String _selectedDeptFilter = 'ALL';
@@ -63,9 +72,63 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _refreshAll();
+    _loadUserPermissions(); // 🟢 Yahan permissions load karein
   }
 
+  Future<void> _loadUserPermissions() async {
+    final session = await SessionManager.getUserSession();
+    final role = session['role'] as String? ?? '';
+    int? empId = session['employeeId'] as int?;
+    final userId = session['userId'] as int?;
+
+    final isSuperAdmin = role == 'Super Admin' || role == 'admin';
+
+    // If empId is null and not super admin, try to resolve from backend
+    if (empId == null && !isSuperAdmin && userId != null) {
+      try {
+        final res = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data['success'] == true && data['data'] is List) {
+            final empList = data['data'] as List;
+            final userEmail = (session['email'] as String? ?? '').toLowerCase();
+            final match = empList.firstWhere(
+              (e) => (e['user_id'] == userId) || (userEmail.isNotEmpty && (e['email']?.toString().toLowerCase() == userEmail)),
+              orElse: () => null,
+            );
+            if (match != null && match['employee_id'] != null) {
+              empId = match['employee_id'] as int;
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt(SessionManager.keyEmployeeId, empId);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Permissions check
+    final canCreatePrj = isSuperAdmin || await SessionManager.hasPermission('projects_create');
+    final canEditPrj = isSuperAdmin || await SessionManager.hasPermission('projects_edit');
+    final canDeletePrj = isSuperAdmin || await SessionManager.hasPermission('projects_delete');
+
+    final canCreateTsk = isSuperAdmin || await SessionManager.hasPermission('tasks_create_assign');
+    final canEditTsk = isSuperAdmin || await SessionManager.hasPermission('tasks_edit');
+    final canDeleteTsk = isSuperAdmin || await SessionManager.hasPermission('tasks_delete');
+
+    if (mounted) {
+      setState(() {
+        _currentUserRole = role;
+        _currentEmployeeId = empId;
+        _canCreateProject = canCreatePrj;
+        _canEditProject = canEditPrj;
+        _canDeleteProject = canDeletePrj;
+        _canCreateTask = canCreateTsk;
+        _canEditTask = canEditTsk;
+        _canDeleteTask = canDeleteTsk;
+      });
+      _refreshAll();
+    }
+  }
   @override
   void dispose() {
     _tabController.dispose();
@@ -90,11 +153,54 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 1. PROJECTS MANGWANA
   Future<void> _fetchProjects() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/projects'));
+      String url = '$_apiHost/api/projects';
+      final session = await SessionManager.getUserSession();
+      final userId = session['userId'];
+      final role = _currentUserRole.isNotEmpty ? _currentUserRole : (session['role'] as String? ?? 'Employee');
+
+      final queryParams = <String>[];
+      if (role != 'Super Admin') {
+        if (_currentEmployeeId != null) queryParams.add('employee_id=$_currentEmployeeId');
+        if (userId != null) queryParams.add('user_id=$userId');
+      }
+      queryParams.add('role=$role');
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
+      }
+
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
           setState(() => _projects = data['data'] ?? []);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. SAARE TASKS MANGWANA
+  Future<void> _fetchAllTasks() async {
+    try {
+      String url = '$_apiHost/api/tasks';
+      final session = await SessionManager.getUserSession();
+      final userId = session['userId'];
+      final role = _currentUserRole.isNotEmpty ? _currentUserRole : (session['role'] as String? ?? 'Employee');
+
+      final queryParams = <String>[];
+      if (role != 'Super Admin') {
+        if (_currentEmployeeId != null) queryParams.add('employee_id=$_currentEmployeeId');
+        if (userId != null) queryParams.add('user_id=$userId');
+      }
+      queryParams.add('role=$role');
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
+      }
+
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true) {
+          setState(() => _allTasks = data['data'] ?? []);
         }
       }
     } catch (_) {}
@@ -386,18 +492,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     });
   }
 
-  // 2. SAARE TASKS MANGWANA
-  Future<void> _fetchAllTasks() async {
-    try {
-      final res = await http.get(Uri.parse('$_apiHost/api/tasks'));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['success'] == true) {
-          setState(() => _allTasks = data['data'] ?? []);
-        }
-      }
-    } catch (_) {}
-  }
+
 
   // 3. EMPLOYEES MANGWANA
   Future<void> _fetchEmployees() async {
@@ -416,7 +511,22 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   Future<void> _fetchProjectDetails(int projectId) async {
     setState(() => _isLoadingDetails = true);
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/projects/$projectId'));
+      final session = await SessionManager.getUserSession();
+      final userId = session['userId'];
+      final role = _currentUserRole.isNotEmpty ? _currentUserRole : (session['role'] as String? ?? 'Employee');
+
+      String url = '$_apiHost/api/projects/$projectId';
+      final queryParams = <String>[];
+      if (role != 'Super Admin') {
+        if (_currentEmployeeId != null) queryParams.add('employee_id=$_currentEmployeeId');
+        if (userId != null) queryParams.add('user_id=$userId');
+      }
+      queryParams.add('role=$role');
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
+      }
+
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -1077,6 +1187,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           taskId: taskId,
           projectId: _selectedProject?['project_id'],
           employees: _employees,
+          canEdit: _canEditTask,
+          canDelete: _canDeleteTask,
           onTaskUpdated: () {
             _refreshAll();
             if (_selectedProject != null) {
@@ -1103,6 +1215,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           initialTask: taskMap,
           projectId: taskMap['project_id'] ?? _selectedProject?['project_id'],
           employees: _employees,
+          canEdit: _canEditTask,
+          canDelete: _canDeleteTask,
           onTaskUpdated: () {
             _refreshAll();
             if (_selectedProject != null) {
@@ -1165,7 +1279,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   Widget build(BuildContext context) {
     final isDark = ThemeController.isDarkMode.value;
     final cardBg = isDark ? const Color(0xFF111113) : Colors.white;
-    final cardBorder = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7);
+    final cardBorder = isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0);
     final textTitle = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white.withValues(alpha: 0.6) : const Color(0xFF334155);
 
@@ -1261,39 +1375,40 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
 
                     const Spacer(),
 
-                    // Primary Button on Mobile: #18181B (kaala) with safed text
-                    InkWell(
-                      onTap: () {
-                        if (_activeTopView == 0) {
-                          _openCreateProjectDialog();
-                        } else {
-                          _openCreateTaskDialog(preselectedProjectId: null);
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6.5),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF27272A) : const Color(0xFF18181B),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.add_rounded, size: 15, color: Colors.white),
-                            const SizedBox(width: 4),
-                            Text(
-                              _activeTopView == 0 ? 'Project' : 'Task',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                    // 🟢 Permission Check: Sirf tabhi dikhao agar permission granted hai
+                    if ((_activeTopView == 0 && _canCreateProject) || (_activeTopView == 1 && _canCreateTask))
+                      InkWell(
+                        onTap: () {
+                          if (_activeTopView == 0) {
+                            _openCreateProjectDialog();
+                          } else {
+                            _openCreateTaskDialog(preselectedProjectId: null);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6.5),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF27272A) : const Color(0xFF18181B),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.add_rounded, size: 15, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                _activeTopView == 0 ? 'Project' : 'Task',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               );
@@ -1349,7 +1464,11 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                     children: [
                       switcher,
                       const Spacer(),
-                      actionButton,
+                      // 🟢 Agar permission hai toh actionButton dikhao, warna khali box
+                      if ((_activeTopView == 0 && _canCreateProject) || (_activeTopView == 1 && _canCreateTask))
+                        actionButton
+                      else
+                        const SizedBox.shrink(),
                     ],
                   ),
                 ),
@@ -1692,7 +1811,9 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   const SizedBox(height: 6),
                   Text(
                     _projects.isEmpty
-                        ? 'Click "+ New Project" to add your first project!'
+                        ? (_canCreateProject
+                            ? 'Click "+ New Project" to add your first project!'
+                            : 'No projects have been assigned to you yet.')
                         : 'Try selecting "All Departments" or clearing the search text.',
                     style: TextStyle(color: textSub, fontSize: 12),
                   ),
@@ -1740,6 +1861,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                 textTitle: textTitle,
                 textSub: textSub,
                 isDark: isDark,
+                canEdit: _canEditProject,
+                canDelete: _canDeleteProject,
                 onTap: () {
                   setState(() => _selectedProject = prj);
                   _fetchProjectDetails(prj['project_id']);
@@ -2704,24 +2827,27 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           ),
           const SizedBox(height: 6),
           Text(
-            'Create a standalone task for work that isn\'t part of a project.',
+            _canCreateTask
+                ? 'Create a standalone task for work that isn\'t part of a project.'
+                : 'No tasks have been assigned to you yet.',
             textAlign: TextAlign.center,
             style: TextStyle(color: textSub, fontSize: 12),
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          if (_canCreateTask) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: () => _openCreateTaskDialog(preselectedProjectId: null),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text(
+                'Assign Task',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+              ),
             ),
-            onPressed: () => _openCreateTaskDialog(preselectedProjectId: null),
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text(
-              'Assign Task',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -2945,22 +3071,25 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               ),
               const SizedBox(width: 12),
 
-              // 6. Action Buttons
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
-                tooltip: 'Edit task',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                onPressed: () => _openEditTaskDialog(task),
-              ),
-              const SizedBox(width: 2),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
-                tooltip: 'Delete task',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                onPressed: () => _confirmDeleteTask(task),
-              ),
+              // 6. Action Buttons (Permission Controlled)
+              if (_canEditTask)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
+                  tooltip: 'Edit task',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  onPressed: () => _openEditTaskDialog(task),
+                ),
+              if (_canDeleteTask) ...[
+                if (_canEditTask) const SizedBox(width: 2),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
+                  tooltip: 'Delete task',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  onPressed: () => _confirmDeleteTask(task),
+                ),
+              ],
             ],
           ),
         );
@@ -3115,6 +3244,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       textTitle: textTitle,
       textSub: textSub,
       isDark: isDark,
+      canEdit: _canEditTask,
+      canDelete: _canDeleteTask,
       onTap: () => _openTaskDetailsDialog(task),
       onEdit: () => _openEditTaskDialog(task),
       onDelete: () => _confirmDeleteTask(task),
@@ -3190,34 +3321,37 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               ),
             ),
             const Spacer(),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: softBank,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: softBorder),
+            if (_canEditProject || _canDeleteProject)
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: softBank,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: softBorder),
+                ),
+                child: PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert_rounded, size: 19, color: textSub),
+                  padding: EdgeInsets.zero,
+                  tooltip: 'Project options',
+                  onSelected: (val) {
+                    if (val == 'edit') _openEditProjectDialog(prj);
+                    if (val == 'delete') _confirmDeleteProject(prj);
+                  },
+                  itemBuilder: (ctx) => [
+                    if (_canEditProject)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(children: [Icon(Icons.edit_outlined, size: 16, color: Color(0xFF10B981)), SizedBox(width: 8), Text('Edit Project')]),
+                      ),
+                    if (_canDeleteProject)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(children: [Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), SizedBox(width: 8), Text('Delete Project', style: TextStyle(color: Colors.redAccent))]),
+                      ),
+                  ],
+                ),
               ),
-              child: PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert_rounded, size: 19, color: textSub),
-                padding: EdgeInsets.zero,
-                tooltip: 'Project options',
-                onSelected: (val) {
-                  if (val == 'edit') _openEditProjectDialog(prj);
-                  if (val == 'delete') _confirmDeleteProject(prj);
-                },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(children: [Icon(Icons.edit_outlined, size: 16, color: Color(0xFF10B981)), SizedBox(width: 8), Text('Edit Project')]),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(children: [Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), SizedBox(width: 8), Text('Delete Project', style: TextStyle(color: Colors.redAccent))]),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
         const SizedBox(height: 10),
@@ -3231,21 +3365,21 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         ),
         const SizedBox(height: 12),
 
-        // Full-width touch-friendly primary action.
-        SizedBox(
-          width: double.infinity,
-          height: 42,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        // Full-width touch-friendly primary action (Permission Controlled)
+        if (_canCreateTask)
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id']),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('New Task', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
             ),
-            onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id']),
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('New Task', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
           ),
-        ),
       ],
     );
   }
@@ -3324,30 +3458,40 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                         ],
                       ),
                     ),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-
-                        padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 8 : 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        elevation: 1,
+                    if (_canCreateTask)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 8 : 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 1,
+                        ),
+                        onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id']),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: Text(isMobile ? 'Task' : 'New Task', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
-                      onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id']),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: Text(isMobile ? 'Task' : 'New Task', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    ),
                     const SizedBox(width: 6),
-                    PopupMenuButton<String>(
-                      icon: Icon(Icons.more_vert, size: 20, color: textSub),
-                      padding: EdgeInsets.zero,
-                      onSelected: (val) {
-                        if (val == 'edit') _openEditProjectDialog(prj);
-                        if (val == 'delete') _confirmDeleteProject(prj);
-                      },
-                      itemBuilder: (ctx) => [
-                        const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 16, color: Color(0xFF10B981)), SizedBox(width: 8), Text('Edit Project')])),
-                        const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), SizedBox(width: 8), Text('Delete Project', style: TextStyle(color: Colors.redAccent))])),
-                      ],
-                    ),
+                    // 🟢 Sirf tabhi 3-dots menu dikhao agar Edit ya Delete ki permission ho
+                    if (_canEditProject || _canDeleteProject)
+                      PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert, size: 20, color: textSub),
+                        padding: EdgeInsets.zero,
+                        onSelected: (val) {
+                          if (val == 'edit') _openEditProjectDialog(prj);
+                          if (val == 'delete') _confirmDeleteProject(prj);
+                        },
+                        itemBuilder: (ctx) => [
+                          if (_canEditProject)
+                            const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(children: [Icon(Icons.edit_outlined, size: 16, color: Color(0xFF10B981)), SizedBox(width: 8), Text('Edit Project')])
+                            ),
+                          if (_canDeleteProject)
+                            const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(children: [Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), SizedBox(width: 8), Text('Delete Project', style: TextStyle(color: Colors.redAccent))])
+                            ),
+                        ],
+                      ),
                   ],
                 ),
               const SizedBox(height: 12),
@@ -3667,6 +3811,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   textSub: textSub,
                   isDark: isDark,
                   isMobile: isMobile,
+                  canEdit: _canEditTask,
+                  canDelete: _canDeleteTask,
                   onToggleStatus: () {
                     final isDone = t['status'] == 'DONE';
                     final next = isDone ? 'TODO' : 'DONE';
@@ -3950,6 +4096,8 @@ class _ProjectUnitCard extends StatefulWidget {
   final Color textTitle;
   final Color textSub;
   final bool isDark;
+  final bool canEdit;
+  final bool canDelete;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -3961,6 +4109,8 @@ class _ProjectUnitCard extends StatefulWidget {
     required this.textTitle,
     required this.textSub,
     required this.isDark,
+    this.canEdit = false,
+    this.canDelete = false,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
@@ -4072,92 +4222,96 @@ class _ProjectUnitCardState extends State<_ProjectUnitCard> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          // 3-DOTS OPTIONS MENU (Edit & Delete)
-                          Theme(
-                            data: Theme.of(context).copyWith(
-                              cardColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                            ),
-                            child: PopupMenuButton<String>(
-                              icon: Container(
-                                padding: const EdgeInsets.all(5),
-                                decoration: BoxDecoration(
-                                  color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
+                          // 3-DOTS OPTIONS MENU (Edit & Delete - Permission Controlled)
+                          if (widget.canEdit || widget.canDelete)
+                            Theme(
+                              data: Theme.of(context).copyWith(
+                                cardColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                              ),
+                              child: PopupMenuButton<String>(
+                                icon: Container(
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.more_vert_rounded,
+                                    size: 16,
+                                    color: textTitle.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                                padding: EdgeInsets.zero,
+                                elevation: 12,
+                                shadowColor: Colors.black.withValues(alpha: 0.3),
+                                offset: const Offset(0, 38),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  side: BorderSide(
                                     color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0),
+                                    width: 1.2,
                                   ),
                                 ),
-                                child: Icon(
-                                  Icons.more_vert_rounded,
-                                  size: 16,
-                                  color: textTitle.withValues(alpha: 0.8),
-                                ),
+                                onSelected: (val) {
+                                  if (val == 'edit') {
+                                    widget.onEdit();
+                                  } else if (val == 'delete') {
+                                    widget.onDelete();
+                                  }
+                                },
+                                itemBuilder: (ctx) => [
+                                  if (widget.canEdit)
+                                    PopupMenuItem<String>(
+                                      value: 'edit',
+                                      height: 44,
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF10B981).withValues(alpha: 0.14),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            'Edit Project',
+                                            style: TextStyle(color: textTitle, fontSize: 13, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  if (widget.canEdit && widget.canDelete)
+                                    const PopupMenuDivider(height: 1),
+                                  if (widget.canDelete)
+                                    PopupMenuItem<String>(
+                                      value: 'delete',
+                                      height: 44,
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: const BoxDecoration(
+                                              color: Color(0x23EF4444),
+                                              borderRadius: BorderRadius.all(Radius.circular(8)),
+                                            ),
+                                            child: const Icon(Icons.delete_outline_rounded, size: 15, color: Colors.redAccent),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          const Text(
+                                            'Delete Project',
+                                            style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
                               ),
-                              padding: EdgeInsets.zero,
-                              elevation: 12,
-                              shadowColor: Colors.black.withValues(alpha: 0.3),
-                              offset: const Offset(0, 38),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(
-                                  color: isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0),
-                                  width: 1.2,
-                                ),
-                              ),
-                              onSelected: (val) {
-                                if (val == 'edit') {
-                                  widget.onEdit();
-                                } else if (val == 'delete') {
-                                  widget.onDelete();
-                                }
-                              },
-                              itemBuilder: (ctx) => [
-                                PopupMenuItem<String>(
-                                  value: 'edit',
-                                  height: 44,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF10B981).withValues(alpha: 0.14),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        'Edit Project',
-                                        style: TextStyle(color: textTitle, fontSize: 13, fontWeight: FontWeight.w600),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuDivider(height: 1),
-                                PopupMenuItem<String>(
-                                  value: 'delete',
-                                  height: 44,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: const BoxDecoration(
-                                          color: Color(0x23EF4444),
-                                          borderRadius: BorderRadius.all(Radius.circular(8)),
-                                        ),
-                                        child: const Icon(Icons.delete_outline_rounded, size: 15, color: Colors.redAccent),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      const Text(
-                                        'Delete Project',
-                                        style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -4226,6 +4380,8 @@ class _GeneralTaskKanbanCard extends StatefulWidget {
   final String Function(dynamic) getTaskStatus;
   final String Function(String) getTaskStatusLabel;
   final bool Function(dynamic) isTaskOverdue;
+  final bool canEdit;
+  final bool canDelete;
 
   const _GeneralTaskKanbanCard({
     required this.task,
@@ -4238,6 +4394,8 @@ class _GeneralTaskKanbanCard extends StatefulWidget {
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
+    this.canEdit = true,
+    this.canDelete = true,
     required this.onStatusChange,
     required this.getPriorityColor,
     required this.getAvatarColor,
@@ -4393,23 +4551,26 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
                         ),
                       ],
                       const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
-                        tooltip: 'Edit task',
-                        splashRadius: 14,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                        onPressed: widget.onEdit,
-                      ),
-                      const SizedBox(width: 2),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
-                        tooltip: 'Delete task',
-                        splashRadius: 14,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                        onPressed: widget.onDelete,
-                      ),
+                      if (widget.canEdit)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
+                          tooltip: 'Edit task',
+                          splashRadius: 14,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                          onPressed: widget.onEdit,
+                        ),
+                      if (widget.canDelete) ...[
+                        if (widget.canEdit) const SizedBox(width: 2),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
+                          tooltip: 'Delete task',
+                          splashRadius: 14,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                          onPressed: widget.onDelete,
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -4801,42 +4962,45 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
                   ],
                 ),
 
-                // 5. Right: 3-dots Menu for Edit / Delete
-                PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert_rounded, size: 16, color: widget.isDark ? Colors.white54 : const Color(0xFF71717A)),
-                  splashRadius: 14,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                  tooltip: 'Options',
-                  onSelected: (val) {
-                    if (val == 'edit') widget.onEdit();
-                    if (val == 'delete') widget.onDelete();
-                  },
-                  itemBuilder: (ctx) => [
-                    PopupMenuItem(
-                      value: 'edit',
-                      height: 36,
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit_outlined, size: 15, color: widget.isDark ? Colors.white : const Color(0xFF18181B)),
-                          const SizedBox(width: 8),
-                          const Text('Edit Task', style: TextStyle(fontSize: 12.5)),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      height: 36,
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline_rounded, size: 15, color: Colors.redAccent),
-                          SizedBox(width: 8),
-                          Text('Delete Task', style: TextStyle(fontSize: 12.5, color: Colors.redAccent)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                // 5. Right: 3-dots Menu for Edit / Delete (Permission Controlled)
+                if (widget.canEdit || widget.canDelete)
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert_rounded, size: 16, color: widget.isDark ? Colors.white54 : const Color(0xFF71717A)),
+                    splashRadius: 14,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                    tooltip: 'Options',
+                    onSelected: (val) {
+                      if (val == 'edit') widget.onEdit();
+                      if (val == 'delete') widget.onDelete();
+                    },
+                    itemBuilder: (ctx) => [
+                      if (widget.canEdit)
+                        PopupMenuItem(
+                          value: 'edit',
+                          height: 36,
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, size: 15, color: widget.isDark ? Colors.white : const Color(0xFF18181B)),
+                              const SizedBox(width: 8),
+                              const Text('Edit Task', style: TextStyle(fontSize: 12.5)),
+                            ],
+                          ),
+                        ),
+                      if (widget.canDelete)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          height: 36,
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline_rounded, size: 15, color: Colors.redAccent),
+                              SizedBox(width: 8),
+                              Text('Delete Task', style: TextStyle(fontSize: 12.5, color: Colors.redAccent)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -4866,6 +5030,9 @@ class _ProjectWorkspaceTaskCard extends StatefulWidget {
   final Function(int, String) onUpdateStatus;
   final Function(int, String) onAddSubtask;
 
+  final bool canEdit;
+  final bool canDelete;
+
   const _ProjectWorkspaceTaskCard({
     required this.task,
     required this.taskCardBg,
@@ -4874,6 +5041,8 @@ class _ProjectWorkspaceTaskCard extends StatefulWidget {
     required this.textSub,
     required this.isDark,
     required this.isMobile,
+    this.canEdit = true,
+    this.canDelete = true,
     required this.onToggleStatus,
     required this.onOpenDetails,
     required this.onEdit,
@@ -4986,25 +5155,28 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Edit Button
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF10B981)),
-                  tooltip: 'Edit Task',
-                  splashRadius: 16,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: widget.onEdit,
-                ),
-                const SizedBox(width: 4),
-                // Delete Button
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 17, color: Colors.redAccent),
-                  tooltip: 'Delete Task',
-                  splashRadius: 16,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: widget.onDelete,
-                ),
+                // Edit Button (Permission Controlled)
+                if (widget.canEdit)
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF10B981)),
+                    tooltip: 'Edit Task',
+                    splashRadius: 16,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                    onPressed: widget.onEdit,
+                  ),
+                // Delete Button (Permission Controlled)
+                if (widget.canDelete) ...[
+                  if (widget.canEdit) const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 17, color: Colors.redAccent),
+                    tooltip: 'Delete Task',
+                    splashRadius: 16,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                    onPressed: widget.onDelete,
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 12),

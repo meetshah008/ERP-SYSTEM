@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/network/api_client.dart';
 import '../../core/widgets/botanical_background.dart';
+import '../../core/network/session_manager.dart';
 import 'task_form_screen.dart';
 
 class TaskDetailsScreen extends StatefulWidget {
@@ -13,6 +14,8 @@ class TaskDetailsScreen extends StatefulWidget {
   final dynamic projectId;
   final List<dynamic>? employees;
   final VoidCallback? onTaskUpdated;
+  final bool? canEdit;
+  final bool? canDelete;
 
   const TaskDetailsScreen({
     super.key,
@@ -21,6 +24,8 @@ class TaskDetailsScreen extends StatefulWidget {
     this.projectId,
     this.employees,
     this.onTaskUpdated,
+    this.canEdit,
+    this.canDelete,
   });
 
   @override
@@ -35,6 +40,9 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   List<dynamic> _projects = [];
   bool _isLoading = true;
   bool _hasChanges = false;
+  bool _canEditTask = false;
+  bool _canDeleteTask = false;
+  bool _canLogTimesheet = false;
 
   // Edit Form Controllers
   final _titleCtrl = TextEditingController();
@@ -55,6 +63,9 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _canEditTask = widget.canEdit ?? false;
+    _canDeleteTask = widget.canDelete ?? false;
+    _loadPermissions();
     if (widget.initialTask != null && widget.initialTask is Map) {
       _task = Map<String, dynamic>.from(widget.initialTask as Map);
       _initFormValues();
@@ -68,6 +79,22 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     _fetchProjects();
     if (_employees.isEmpty) {
       _fetchEmployees();
+    }
+  }
+
+  Future<void> _loadPermissions() async {
+    final session = await SessionManager.getUserSession();
+    final role = session['role'] as String? ?? '';
+    final isSuper = role == 'Super Admin' || role == 'admin';
+    final canEdit = isSuper || await SessionManager.hasPermission('tasks_edit');
+    final canDelete = isSuper || await SessionManager.hasPermission('tasks_delete');
+    final canTimesheet = isSuper || await SessionManager.hasPermission('tasks_log_timesheet');
+    if (mounted) {
+      setState(() {
+        _canEditTask = canEdit;
+        _canDeleteTask = canDelete;
+        _canLogTimesheet = canTimesheet;
+      });
     }
   }
 
@@ -430,38 +457,40 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                       ),
                     ),
 
-                    // Edit Task Button -> Opens COMMON TaskFormScreen!
-                    IconButton(
-                      icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2563EB)),
-                      tooltip: 'Edit Task Details',
-                      onPressed: () async {
-                        final res = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => TaskFormScreen(
-                              task: _task,
-                              projects: _projects,
-                              employees: _employees,
-                              onTaskSaved: () {
-                                _fetchTaskDetails();
-                                widget.onTaskUpdated?.call();
-                              },
+                    // Edit Task Button (Permission Controlled)
+                    if (_canEditTask)
+                      IconButton(
+                        icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF2563EB)),
+                        tooltip: 'Edit Task Details',
+                        onPressed: () async {
+                          final res = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TaskFormScreen(
+                                task: _task,
+                                projects: _projects,
+                                employees: _employees,
+                                onTaskSaved: () {
+                                  _fetchTaskDetails();
+                                  widget.onTaskUpdated?.call();
+                                },
+                              ),
                             ),
-                          ),
-                        );
-                        if (res == true) {
-                          _fetchTaskDetails();
-                          widget.onTaskUpdated?.call();
-                        }
-                      },
-                    ),
+                          );
+                          if (res == true) {
+                            _fetchTaskDetails();
+                            widget.onTaskUpdated?.call();
+                          }
+                        },
+                      ),
 
-                    // Delete Task Button
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-                      tooltip: 'Delete Task',
-                      onPressed: _deleteTask,
-                    ),
+                    // Delete Task Button (Permission Controlled)
+                    if (_canDeleteTask)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                        tooltip: 'Delete Task',
+                        onPressed: _deleteTask,
+                      ),
                   ],
                 ),
               ),
@@ -899,54 +928,57 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                      tooltip: 'Remove',
-                      onPressed: () => _deleteSubtask(st['subtask_id']),
-                    ),
+                    if (_canDeleteTask)
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                        tooltip: 'Remove',
+                        onPressed: () => _deleteSubtask(st['subtask_id']),
+                      ),
                   ],
                 ),
               );
             }),
 
-          const SizedBox(height: 10),
+          if (_canEditTask) ...[
+            const SizedBox(height: 10),
 
-          // INLINE ADD SUBTASK FIELD (NO POPUP!)
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _newSubtaskCtrl,
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: 'Add a new checklist step...',
-                    hintStyle: TextStyle(color: textSub, fontSize: 12.5),
-                    filled: true,
-                    fillColor: inputBg,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cardBorder)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cardBorder)),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF10B981))),
+            // INLINE ADD SUBTASK FIELD (NO POPUP!)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newSubtaskCtrl,
+                    style: TextStyle(color: textTitle, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Add a new checklist step...',
+                      hintStyle: TextStyle(color: textSub, fontSize: 12.5),
+                      filled: true,
+                      fillColor: inputBg,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cardBorder)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cardBorder)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF10B981))),
+                    ),
+                    onSubmitted: (_) => _addNewSubtask(),
                   ),
-                  onSubmitted: (_) => _addNewSubtask(),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Add Step', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: _addNewSubtask,
                 ),
-                icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text('Add Step', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                onPressed: _addNewSubtask,
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1035,98 +1067,100 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               );
             }),
 
-          const SizedBox(height: 14),
-          const Divider(),
-          const SizedBox(height: 10),
+          if (_canLogTimesheet) ...[
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 10),
 
-          // INLINE LOG HOURS FORM (NO POPUP!)
-          Text('Log Time on this Task', style: TextStyle(color: textTitle, fontSize: 13, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
+            // INLINE LOG HOURS FORM (NO POPUP!)
+            Text('Log Time on this Task', style: TextStyle(color: textTitle, fontSize: 13, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
 
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              // Worker selector
-              if (validLogWorkers.isNotEmpty)
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                // Worker selector
+                if (validLogWorkers.isNotEmpty)
+                  SizedBox(
+                    width: 220,
+                    child: DropdownButtonFormField<int>(
+                      value: safeLogWorkerValue,
+                      decoration: InputDecoration(
+                        labelText: 'Worker',
+                        labelStyle: TextStyle(color: textSub, fontSize: 12),
+                        filled: true,
+                        fillColor: inputBg,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: cardBorder)),
+                      ),
+                      dropdownColor: cardBg,
+                      style: TextStyle(color: textTitle, fontSize: 12.5),
+                      items: validLogWorkers.map<DropdownMenuItem<int>>((e) {
+                        final empId = int.tryParse(e['employee_id'].toString()) ?? 0;
+                        return DropdownMenuItem<int>(
+                          value: empId,
+                          child: Text(e['full_name']?.toString() ?? 'Staff', overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _logWorkerId = val),
+                    ),
+                  ),
+
+                // Hours input
                 SizedBox(
-                  width: 220,
-                  child: DropdownButtonFormField<int>(
-                    value: safeLogWorkerValue,
+                  width: 120,
+                  child: TextField(
+                    controller: _logHoursCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: TextStyle(color: textTitle, fontSize: 13),
                     decoration: InputDecoration(
-                      labelText: 'Worker',
+                      labelText: 'Hours',
+                      hintText: 'e.g. 2.5',
                       labelStyle: TextStyle(color: textSub, fontSize: 12),
                       filled: true,
                       fillColor: inputBg,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: cardBorder)),
                     ),
-                    dropdownColor: cardBg,
-                    style: TextStyle(color: textTitle, fontSize: 12.5),
-                    items: validLogWorkers.map<DropdownMenuItem<int>>((e) {
-                      final empId = int.tryParse(e['employee_id'].toString()) ?? 0;
-                      return DropdownMenuItem<int>(
-                        value: empId,
-                        child: Text(e['full_name']?.toString() ?? 'Staff', overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (val) => setState(() => _logWorkerId = val),
                   ),
                 ),
 
-              // Hours input
-              SizedBox(
-                width: 120,
-                child: TextField(
-                  controller: _logHoursCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  decoration: InputDecoration(
-                    labelText: 'Hours',
-                    hintText: 'e.g. 2.5',
-                    labelStyle: TextStyle(color: textSub, fontSize: 12),
-                    filled: true,
-                    fillColor: inputBg,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: cardBorder)),
+                // Work note
+                SizedBox(
+                  width: 260,
+                  child: TextField(
+                    controller: _logDescCtrl,
+                    style: TextStyle(color: textTitle, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'Work Done Note',
+                      hintText: 'What was worked on?',
+                      labelStyle: TextStyle(color: textSub, fontSize: 12),
+                      filled: true,
+                      fillColor: inputBg,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: cardBorder)),
+                    ),
                   ),
                 ),
-              ),
 
-              // Work note
-              SizedBox(
-                width: 260,
-                child: TextField(
-                  controller: _logDescCtrl,
-                  style: TextStyle(color: textTitle, fontSize: 13),
-                  decoration: InputDecoration(
-                    labelText: 'Work Done Note',
-                    hintText: 'What was worked on?',
-                    labelStyle: TextStyle(color: textSub, fontSize: 12),
-                    filled: true,
-                    fillColor: inputBg,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: cardBorder)),
+                // Submit Button
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563EB),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
+                  icon: _isLoggingHours
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.add_task_rounded, size: 16),
+                  label: const Text('Log Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: _isLoggingHours ? null : _logWorkHours,
                 ),
-              ),
-
-              // Submit Button
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                icon: _isLoggingHours
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.add_task_rounded, size: 16),
-                label: const Text('Log Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                onPressed: _isLoggingHours ? null : _logWorkHours,
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );

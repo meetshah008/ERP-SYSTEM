@@ -1,5 +1,32 @@
 const db = require('../../config/db');
 
+
+const sendNotification = async ({ companyId = 1, title, message, type, referenceId, targetUserId }) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS NOTIFICATION (
+        notification_id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL DEFAULT 1,
+        title VARCHAR(150) NOT NULL,
+        message TEXT NOT NULL,
+        type VARCHAR(50) DEFAULT 'GENERAL',
+        reference_id INT DEFAULT NULL,
+        target_user_id INT DEFAULT NULL,
+        target_role VARCHAR(50) DEFAULT NULL,
+        sender_user_id INT DEFAULT NULL,
+        is_read TINYINT(1) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.query(`
+      INSERT INTO NOTIFICATION (company_id, title, message, type, reference_id, target_user_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [companyId, title, message, type, referenceId, targetUserId]);
+  } catch (err) {
+    console.warn('Task notification failed:', err.message);
+  }
+};
+
 // 1. NAYA TASK ASSIGN KARNA (General ya Project Task - Supports Single or Multiple Assignees)
 exports.createTask = async (req, res) => {
   try {
@@ -26,6 +53,25 @@ exports.createTask = async (req, res) => {
     );
 
     const taskId = result.insertId;
+
+        // Notification to assigned employees
+        if (assigneeList.length > 0) {
+          const [empUsers] = await db.query(
+            `SELECT employee_id, user_id FROM EMPLOYEE WHERE employee_id IN (?)`,
+            [assigneeList]
+          );
+          for (const eu of empUsers) {
+            if (eu.user_id) {
+              await sendNotification({
+                title: 'New Task Assigned 📋',
+                message: `Aapko naya task "${title}" assign kiya gaya hai (Priority: ${priority || 'MEDIUM'}).`,
+                type: 'TASK_ASSIGNED',
+                referenceId: taskId,
+                targetUserId: eu.user_id
+              });
+            }
+          }
+        }
 
     // Insert all assignees into task_assignees table
     for (const empId of assigneeList) {
@@ -59,25 +105,69 @@ exports.createTask = async (req, res) => {
 // 2. SAARE TASKS KI LIST DEKHNA (Get All Tasks with Project name & Multi-Assignees)
 exports.getTasks = async (req, res) => {
   try {
-    const [tasks] = await db.query(
-      `SELECT t.*,
-              e.employee_id, e.full_name as assigned_worker, e.emp_code,
-              p.project_name, p.project_code
-       FROM task t
-       LEFT JOIN employee e ON t.assigned_to = e.employee_id
-       LEFT JOIN project p ON t.project_id = p.project_id
-       ORDER BY t.task_id DESC`
-    );
+    const { employee_id, user_id, role } = req.query;
+    const userRole = role || req.user?.role || req.user?.role_name;
+    const isSuperAdmin = userRole === 'Super Admin' || userRole === 'admin';
+
+    // Agar role ya employee_id ya user_id explicitly bheja hai tabhi filtering karenge
+    const isFilteringRequested = Boolean(role || employee_id || user_id);
+
+    let empId = employee_id ? parseInt(employee_id, 10) : (req.user?.employeeId || null);
+
+    // Agar employee_id nahi mila par user_id mila hai, toh employee dhundo
+    if (isFilteringRequested && !isSuperAdmin && !empId && (user_id || req.user?.id || req.user?.userId)) {
+      const uId = user_id || req.user?.id || req.user?.userId;
+      try {
+        const [empRows] = await db.query(
+          'SELECT employee_id FROM employee WHERE user_id = ? LIMIT 1',
+          [uId]
+        );
+        if (empRows.length > 0) {
+          empId = empRows[0].employee_id;
+        }
+      } catch (err) {
+        console.warn('Error finding employee by user_id in getTasks:', err.message);
+      }
+    }
+
+    let query = `
+      SELECT t.*,
+             e.employee_id, e.full_name as assigned_worker, e.emp_code,
+             p.project_name, p.project_code
+      FROM task t
+      LEFT JOIN employee e ON t.assigned_to = e.employee_id
+      LEFT JOIN project p ON t.project_id = p.project_id
+    `;
+
+    const params = [];
+
+    // Agar filtering requested hai aur non-super-admin employee hai
+    if (isFilteringRequested && !isSuperAdmin) {
+      if (empId) {
+        query += `
+          WHERE (
+            t.assigned_to = ?
+            OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
+          )
+        `;
+        params.push(empId, empId);
+      } else {
+        // Non-admin employee jiska koi employee record linked nahi hai
+        query += ` WHERE 1 = 0 `;
+      }
+    }
+
+    query += ` ORDER BY t.task_id DESC`;
+
+    const [tasks] = await db.query(query, params);
 
     for (const task of tasks) {
-      // Subtasks
       const [subtasks] = await db.query(
         `SELECT * FROM task_subtask WHERE task_id = ? ORDER BY subtask_id ASC`,
         [task.task_id]
       );
       task.subtasks = subtasks;
 
-      // Multi-Assignees
       const [assignees] = await db.query(
         `SELECT e.employee_id, e.full_name, e.emp_code, e.designation
          FROM task_assignees ta
