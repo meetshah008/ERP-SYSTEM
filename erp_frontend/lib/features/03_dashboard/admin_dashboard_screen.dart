@@ -68,6 +68,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // 🔐 Permissions Map (Logged-in user ke allowed/denied features)
   Map<String, bool> _permissions = {};
+  String _displayName = '';
 
   @override
   void initState() {
@@ -78,6 +79,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       duration: const Duration(milliseconds: 450),
     )..addStatusListener(_onTabBlurStatus);
 
+    _loadSessionInfo();
     _loadPermissions(); // 👈 Pehle user ki permissions load karein
     _fetchLiveStats();
     _fetchNotifications();
@@ -86,6 +88,87 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _notifTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted) _fetchNotifications();
     });
+  }
+
+  Future<void> _loadSessionInfo() async {
+    final session = await SessionManager.getUserSession();
+    final storedName = (session['fullName'] as String?)?.trim();
+    if (mounted && storedName != null && storedName.isNotEmpty) {
+      setState(() {
+        _displayName = storedName;
+      });
+    }
+  }
+
+  String get _effectiveUserName {
+    if (_displayName.isNotEmpty) return _displayName;
+    final email = widget.adminEmail.trim();
+    if (email.isNotEmpty) {
+      final raw = email.split('@')[0];
+      return raw.isNotEmpty ? (raw[0].toUpperCase() + raw.substring(1)) : 'Admin';
+    }
+    return 'Admin';
+  }
+
+  Widget _buildRoleBadge(String role, bool isDark, {bool isSmall = false}) {
+    final cleanRole = role.trim().isNotEmpty ? role.trim() : 'Employee';
+    final isSuper = cleanRole.toLowerCase().contains('super admin') || cleanRole.toLowerCase() == 'admin';
+    final isManager = cleanRole.toLowerCase().contains('manager');
+
+    Color badgeColor;
+    IconData badgeIcon;
+    String badgeLabel;
+
+    if (isSuper) {
+      badgeColor = const Color(0xFF8B5CF6); // Royal Violet / Purple
+      badgeIcon = Icons.shield_rounded;
+      badgeLabel = 'SUPER ADMIN';
+    } else if (isManager) {
+      badgeColor = const Color(0xFF0284C7); // Sky Blue
+      badgeIcon = Icons.verified_user_rounded;
+      badgeLabel = isSmall ? 'MANAGER' : cleanRole.toUpperCase();
+    } else {
+      badgeColor = const Color(0xFF059669); // Emerald Green
+      badgeIcon = Icons.badge_rounded;
+      badgeLabel = cleanRole.toUpperCase();
+    }
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmall ? 7 : 11,
+          vertical: isSmall ? 2 : 4.5,
+        ),
+        decoration: BoxDecoration(
+          color: badgeColor.withValues(alpha: isDark ? 0.20 : 0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: badgeColor.withValues(alpha: isDark ? 0.45 : 0.35),
+            width: 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(badgeIcon, size: isSmall ? 10 : 13, color: badgeColor),
+            SizedBox(width: isSmall ? 3.5 : 5),
+            Text(
+              badgeLabel,
+              maxLines: 1,
+              style: TextStyle(
+                color: badgeColor,
+                fontSize: isSmall ? 9.5 : 11.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Session storage se permissions load karne ka function
@@ -919,7 +1002,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       radius: 17,
                       backgroundColor: const Color(0xFF059669),
                       child: Text(
-                        widget.adminEmail.isNotEmpty ? widget.adminEmail[0].toUpperCase() : 'A',
+                        _effectiveUserName.isNotEmpty ? _effectiveUserName[0].toUpperCase() : 'A',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ),
@@ -927,22 +1010,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            widget.adminEmail.split('@')[0],
+                            _effectiveUserName,
                             style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
-                          Text(
-                            widget.role,
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
-                          ),
+                          const SizedBox(height: 3),
+                          _buildRoleBadge(widget.role, true, isSmall: true),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 4),
                     IconButton(
-                      icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 19),
+                      icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 18),
                       tooltip: 'Logout',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                       onPressed: _handleLogout,
                     ),
                   ],
@@ -1112,8 +1198,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  // ================= 📱 ULTRA-SLEEK MOBILE DASHBOARD (ADAPTIVE LIGHT / DARK) =================
-  // ================= 📱 ULTRA-SLEEK MOBILE DASHBOARD (AURORA GLASS) =================
+  // ================= 📱 ULTRA-SLEEK MOBILE DASHBOARD =================
+
   String _mobileDateLabel(DateTime date) {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const months = [
@@ -1220,29 +1306,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 1),
+                      const SizedBox(height: 2),
                       Text(
-                        adminName,
+                        _effectiveUserName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: textTitle,
-                          fontSize: 24,
+                          fontSize: 22,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.5,
                           height: 1.1,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${widget.role}  •  ${_mobileDateLabel(now)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: textSub,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w400,
-                        ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          _buildRoleBadge(widget.role, isDark, isSmall: true),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _mobileDateLabel(now),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textSub,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -2504,7 +2598,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.white.withValues(alpha: 0.7); // Crisp frosted border
 
-    final adminName = widget.adminEmail.isNotEmpty ? widget.adminEmail.split('@')[0] : 'Admin';
+    final adminName = _effectiveUserName;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2540,9 +2634,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Welcome back, $adminName 👋', style: TextStyle(color: textTitle, fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 3),
-                        Text('Workspace Active • Everything is running smoothly today.', style: TextStyle(color: textSub, fontSize: 12.5)),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 10,
+                          runSpacing: 6,
+                          children: [
+                            Text(
+                              'Welcome back, $adminName 👋',
+                              style: TextStyle(color: textTitle, fontSize: 18.5, fontWeight: FontWeight.bold),
+                            ),
+                            _buildRoleBadge(widget.role, isDark),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Text(
+                              widget.adminEmail,
+                              style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                            Text('  •  ', style: TextStyle(color: textSub.withValues(alpha: 0.5), fontSize: 12)),
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Workspace Active',
+                              style: TextStyle(color: const Color(0xFF059669), fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                            Text('  •  ', style: TextStyle(color: textSub.withValues(alpha: 0.5), fontSize: 12)),
+                            Flexible(
+                              child: Text(
+                                'Everything is running smoothly today.',
+                                style: TextStyle(color: textSub, fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

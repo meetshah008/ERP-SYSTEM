@@ -13,6 +13,7 @@ class SessionManager {
   static const String keyCompanyId = 'company_id';
   static const String keyPermissions = 'user_permissions';
   static const String keyEmployeeId = 'employee_id';
+  static const String keyFullName = 'user_full_name';
 
 
   // 1. LOGIN HONE PAR DATA SAVE KARNA
@@ -21,6 +22,7 @@ class SessionManager {
     required String email,
     required String role,
     required String companyName,
+    String? fullName,
     int? userId,
     int? companyId,
     int? employeeId,
@@ -32,6 +34,9 @@ class SessionManager {
     await prefs.setString(keyEmail, email);
     await prefs.setString(keyRole, role);
     await prefs.setString(keyCompanyName, companyName);
+    if (fullName != null && fullName.isNotEmpty) {
+      await prefs.setString(keyFullName, fullName);
+    }
     if (userId != null) await prefs.setInt(keyUserId, userId);
     if (companyId != null) await prefs.setInt(keyCompanyId, companyId);
     if (employeeId != null) await prefs.setInt(keyEmployeeId, employeeId);
@@ -79,6 +84,7 @@ class SessionManager {
       'token': prefs.getString(keyToken) ?? '',
       'isLoggedIn': prefs.getBool(keyIsLoggedIn) ?? false,
       'email': prefs.getString(keyEmail) ?? '',
+      'fullName': prefs.getString(keyFullName) ?? '',
       'role': prefs.getString(keyRole) ?? '',
       'companyName': prefs.getString(keyCompanyName) ?? '',
       'userId': prefs.getInt(keyUserId),
@@ -93,6 +99,7 @@ class SessionManager {
     await prefs.remove(keyToken);
     await prefs.remove(keyIsLoggedIn);
     await prefs.remove(keyEmail);
+    await prefs.remove(keyFullName);
     await prefs.remove(keyRole);
     await prefs.remove(keyCompanyName);
     await prefs.remove(keyUserId);

@@ -57,10 +57,21 @@ exports.registerCompany = async (req, res) => {
     );
 
     // E. Create First Branch
-    await connection.query(
+    const [branchResult] = await connection.query(
       'INSERT INTO BRANCH (company_id, name, address) VALUES (?, ?, ?)',
       [companyId, first_branch_name || 'Main Headquarter', 'Default Location']
     );
+
+    // F. Create Initial Employee Record for Super Admin
+    try {
+      const adminDisplayName = admin_name && admin_name.trim() ? admin_name.trim() : (admin_email.split('@')[0]);
+      const cleanName = adminDisplayName.charAt(0).toUpperCase() + adminDisplayName.slice(1);
+      await connection.query(
+        `INSERT INTO EMPLOYEE (user_id, branch_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
+         VALUES (?, ?, 'ADM-001', ?, 'System Administrator', 'Super Admin', ?, 'active', CURDATE(), 'Permanent')`,
+        [userResult.insertId, branchResult.insertId || 1, cleanName, admin_email]
+      );
+    } catch (_) {}
 
     // Commit Transaction
     await connection.commit();
@@ -131,16 +142,32 @@ exports.login = async (req, res) => {
 
     // 🔍 Resolve / Link Employee Record
     let employeeId = null;
+    let employeeFullName = null;
     try {
-      const [empRows] = await db.query(
-        'SELECT employee_id, user_id FROM EMPLOYEE WHERE user_id = ? OR email = ? LIMIT 1',
+      let [empRows] = await db.query(
+        'SELECT employee_id, user_id, full_name FROM EMPLOYEE WHERE user_id = ? OR email = ? LIMIT 1',
         [user.user_id, user.email]
       );
       if (empRows.length > 0) {
         employeeId = empRows[0].employee_id;
+        employeeFullName = empRows[0].full_name;
         if (!empRows[0].user_id) {
           await db.query('UPDATE EMPLOYEE SET user_id = ? WHERE employee_id = ?', [user.user_id, employeeId]);
         }
+      } else {
+        // Auto-create employee record for this user if missing
+        const rawName = user.email ? user.email.split('@')[0] : 'Admin';
+        const cleanName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+        const isSuper = user.role_name === 'Super Admin' || user.role_name === 'Admin';
+        const empCode = `${isSuper ? 'ADM' : 'EMP'}-${String(user.user_id).padStart(3, '0')}`;
+        const desig = isSuper ? 'System Administrator' : (user.role_name || 'Staff');
+        const [insEmp] = await db.query(
+          `INSERT INTO EMPLOYEE (user_id, branch_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
+           VALUES (?, 1, ?, ?, ?, ?, ?, 'active', CURDATE(), 'Permanent')`,
+          [user.user_id, empCode, cleanName, desig, user.role_name, user.email]
+        );
+        employeeId = insEmp.insertId;
+        employeeFullName = cleanName;
       }
     } catch (e) {
       console.warn('Error resolving employee record:', e.message);
@@ -245,6 +272,7 @@ exports.login = async (req, res) => {
        user: {
          id: user.user_id,
          email: user.email,
+         fullName: employeeFullName || user.email.split('@')[0],
          role: user.role_name,
          companyId: user.company_id,
          companyName: user.company_name,

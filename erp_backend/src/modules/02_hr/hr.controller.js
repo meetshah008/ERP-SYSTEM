@@ -164,9 +164,65 @@ exports.addEmployee = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Database error', error: error.message });
   }
 };
+// Ensure Super Admin & Admin user accounts have a linked record in EMPLOYEE table
+async function ensureAdminEmployeeRecords() {
+  try {
+    const [usersWithoutEmployee] = await db.query(
+      `SELECT u.user_id, u.email, u.company_id, r.name as role_name
+       FROM USER u
+       JOIN ROLE r ON u.role_id = r.role_id
+       WHERE u.is_active = 1
+       AND NOT EXISTS (
+         SELECT 1 FROM EMPLOYEE e WHERE e.user_id = u.user_id OR (e.email = u.email AND e.email IS NOT NULL AND e.email != '')
+       )`
+    );
+
+    for (const u of usersWithoutEmployee) {
+      const rawName = u.email ? u.email.split('@')[0] : 'Admin';
+      const cleanName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      const isSuper = u.role_name === 'Super Admin' || u.role_name === 'Admin';
+      const codePrefix = isSuper ? 'ADM' : 'EMP';
+      const empCode = `${codePrefix}-${String(u.user_id).padStart(3, '0')}`;
+      const designation = isSuper ? 'System Administrator' : (u.role_name || 'Staff');
+
+      let branchId = 1;
+      try {
+        const [bRows] = await db.query('SELECT branch_id FROM BRANCH LIMIT 1');
+        if (bRows.length > 0) branchId = bRows[0].branch_id;
+      } catch (_) {}
+
+      let deptId = null;
+      try {
+        const [dRows] = await db.query('SELECT department_id FROM DEPARTMENT LIMIT 1');
+        if (dRows.length > 0) deptId = dRows[0].department_id;
+      } catch (_) {}
+
+      await db.query(
+        `INSERT INTO EMPLOYEE
+         (user_id, branch_id, department_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURDATE(), 'Permanent')`,
+        [u.user_id, branchId, deptId, empCode, cleanName, designation, u.role_name, u.email]
+      );
+    }
+
+    // Link any employee whose email matches an active user but user_id was null
+    try {
+      await db.query(
+        `UPDATE EMPLOYEE e
+         JOIN USER u ON e.email = u.email
+         SET e.user_id = u.user_id
+         WHERE e.user_id IS NULL AND e.email IS NOT NULL AND e.email != ''`
+      );
+    } catch (_) {}
+  } catch (err) {
+    console.warn('[AutoSync] Error ensuring admin employee records:', err.message);
+  }
+}
+
 // 2. GET ALL EMPLOYEES (With Lifecycle & Phone/Email details)
 exports.getEmployees = async (req, res) => {
   try {
+    await ensureAdminEmployeeRecords();
     let employees = [];
     try {
       const [rows] = await db.query(
@@ -249,6 +305,7 @@ exports.getEmployees = async (req, res) => {
 
 exports.getEmployeeStats = async (req, res) => {
   try {
+    await ensureAdminEmployeeRecords();
     const [result] = await db.query('SELECT COUNT(*) as total FROM EMPLOYEE WHERE status = "active"');
     return res.status(200).json({ success: true, total: result[0].total });
   } catch (error) {

@@ -64,6 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await SessionManager.saveSession(
         token: token,
         email: user['email'] ?? '',
+        fullName: user['fullName'],
         role: user['role'] ?? 'Super Admin',
         companyName: user['companyName'] ?? 'Manufacturing Co',
         userId: user['id'],
