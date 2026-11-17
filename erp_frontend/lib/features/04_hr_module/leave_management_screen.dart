@@ -7,6 +7,7 @@ import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/widgets/searchable_employee_dropdown.dart';
+import '../../core/network/api_client.dart';
 
 class LeaveManagementScreen extends StatefulWidget {
   const LeaveManagementScreen({super.key});
@@ -55,7 +56,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
       final canApprove = await SessionManager.hasPermission('leaves_approve');
       final isApproverOrAdmin = role == 'Super Admin' || canApprove;
 
-      String url = 'http://localhost:5000/api/hr/leaves';
+      String url = '${ApiClient.apiHost}/api/hr/leaves';
       // Regular employee ko sirf apni leaves aayengi:
       if (!isApproverOrAdmin && currentUserId != null) {
         url += '?user_id=$currentUserId';
@@ -98,7 +99,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
   // 2. Employees mangwana (Apply leave ke dropdown ke liye)
   Future<void> _fetchEmployees() async {
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final res = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -117,7 +118,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
       final currentUserId = session['userId'] ?? 1;
 
       final res = await http.put(
-        Uri.parse('http://localhost:5000/api/hr/leaves/$leaveId/status'),
+        Uri.parse('${ApiClient.apiHost}/api/hr/leaves/$leaveId/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': status, 'approved_by': currentUserId}),
       );
@@ -187,7 +188,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
 
   Future<void> _deleteLeave(int leaveId) async {
     try {
-      final res = await http.delete(Uri.parse('http://localhost:5000/api/hr/leaves/$leaveId'));
+      final res = await http.delete(Uri.parse('${ApiClient.apiHost}/api/hr/leaves/$leaveId'));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -597,7 +598,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
 
                   try {
                     final res = await http.post(
-                      Uri.parse('http://localhost:5000/api/hr/leaves'),
+                      Uri.parse('${ApiClient.apiHost}/api/hr/leaves'),
                       headers: {'Content-Type': 'application/json'},
                       body: jsonEncode(payload),
                     );

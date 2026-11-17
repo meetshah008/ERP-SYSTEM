@@ -8,6 +8,7 @@ import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../../core/network/session_manager.dart';
 import 'biometric_import_screen.dart';
+import '../../core/network/api_client.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -56,7 +57,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _fetchAttendance() async {
     setState(() => _isLoading = true);
     try {
-      String url = 'http://localhost:5000/api/hr/attendance?';
+      String url = '${ApiClient.apiHost}/api/hr/attendance?';
       if (_customDateRange != null) {
         final start = _customDateRange!.start.toIso8601String().split('T')[0];
         final end = _customDateRange!.end.toIso8601String().split('T')[0];
@@ -338,7 +339,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               statusMsg = null;
                             });
                             try {
-                              final uri = Uri.parse('http://localhost:5000/api/hr/upload-attendance');
+                              final uri = Uri.parse('${ApiClient.apiHost}/api/hr/upload-attendance');
                               final request = http.MultipartRequest('POST', uri);
                               request.fields['company_id'] = '1';
                               request.fields['user_id'] = '1';
@@ -546,7 +547,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       setDialogState(() => isSaving = true);
                       try {
                         final res = await http.put(
-                          Uri.parse('http://localhost:5000/api/hr/attendance/$attendanceId'),
+                          Uri.parse('${ApiClient.apiHost}/api/hr/attendance/$attendanceId'),
                           headers: {'Content-Type': 'application/json'},
                           body: jsonEncode({
                             'status': selectedStatus,

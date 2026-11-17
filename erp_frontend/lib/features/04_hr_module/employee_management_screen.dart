@@ -8,6 +8,7 @@ import 'employee_details_screen.dart';
 import 'employee_onboarding_screen.dart';
 import 'departments_screen.dart';
 import '../../core/network/session_manager.dart';
+import '../../core/network/api_client.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -58,13 +59,13 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   Future<void> _fetchEmployees() async {
     setState(() => _isLoading = true);
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final res = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         _employees = data['data'] ?? [];
       }
       try {
-        final deptRes = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+        final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
         if (deptRes.statusCode == 200) {
           final deptData = jsonDecode(deptRes.body);
           _departments = deptData['data'] ?? [];
@@ -274,7 +275,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                   setDialogState(() => isSaving = true);
                   try {
                     final res = await http.put(
-                      Uri.parse('http://localhost:5000/api/hr/employees/${emp['employee_id']}/role'),
+                      Uri.parse('${ApiClient.apiHost}/api/hr/employees/${emp['employee_id']}/role'),
                       headers: {'Content-Type': 'application/json'},
                       body: jsonEncode({'role_name': selectedRole}),
                     );
@@ -467,7 +468,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     Navigator.pop(ctx);
     try {
       final res = await http.put(
-        Uri.parse('http://localhost:5000/api/hr/employees/$empId/status'),
+        Uri.parse('${ApiClient.apiHost}/api/hr/employees/$empId/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': status, 'exit_reason': reason}),
       );
@@ -500,7 +501,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () async {
               Navigator.pop(ctx);
-              await http.delete(Uri.parse('http://localhost:5000/api/hr/employees/$empId'));
+              await http.delete(Uri.parse('${ApiClient.apiHost}/api/hr/employees/$empId'));
               _fetchEmployees();
             },
             child: const Text('Delete'),

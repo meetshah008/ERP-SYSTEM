@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
+import '../../core/network/api_client.dart';
 
 class EmployeeEditScreen extends StatefulWidget {
   final dynamic employeeId;
@@ -157,7 +158,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   Future<void> _fetchDepartments() async {
     try {
       final res = await http
-          .get(Uri.parse('http://localhost:5000/api/hr/departments'));
+          .get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         _departments = json['data'] ?? [];
@@ -172,7 +173,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     try {
       final res = await http.get(
         Uri.parse(
-          'http://localhost:5000/api/hr/employees/${widget.employeeId}/full-profile',
+          '${ApiClient.apiHost}/api/hr/employees/${widget.employeeId}/full-profile',
         ),
       );
       if (res.statusCode == 200) {
@@ -286,7 +287,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
 
       final res = await http.put(
         Uri.parse(
-          'http://localhost:5000/api/hr/employees/${widget.employeeId}/lifecycle',
+          '${ApiClient.apiHost}/api/hr/employees/${widget.employeeId}/lifecycle',
         ),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),

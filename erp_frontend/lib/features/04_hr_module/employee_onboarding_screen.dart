@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
+import '../../core/network/api_client.dart';
 
 class EmployeeOnboardingScreen extends StatefulWidget {
   final List<dynamic>? departments;
@@ -109,7 +110,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   Future<void> _fetchDepartments() async {
     setState(() => _isLoadingDepartments = true);
     try {
-      final res = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+      final res = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['departments'] != null) {
@@ -260,7 +261,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       };
 
       final res = await http.post(
-        Uri.parse('http://localhost:5000/api/hr/employees'),
+        Uri.parse('${ApiClient.apiHost}/api/hr/employees'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
       );

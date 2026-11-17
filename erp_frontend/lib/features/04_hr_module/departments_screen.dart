@@ -5,6 +5,7 @@ import '../../core/network/session_manager.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
 import 'department_details_screen.dart';
+import '../../core/network/api_client.dart';
 
 class DepartmentsScreen extends StatefulWidget {
   const DepartmentsScreen({super.key});
@@ -44,7 +45,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final deptRes = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+      final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (deptRes.statusCode == 200) {
         final dJson = jsonDecode(deptRes.body);
         if (dJson['success'] == true && dJson['data'] is List) {
@@ -52,7 +53,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         }
       }
 
-      final empRes = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final eJson = jsonDecode(empRes.body);
         if (eJson['success'] == true && eJson['data'] is List) {
@@ -458,7 +459,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                                   http.Response res;
                                   if (isEditing) {
                                     res = await http.put(
-                                      Uri.parse('http://localhost:5000/api/hr/departments/${deptToEdit['department_id']}'),
+                                      Uri.parse('${ApiClient.apiHost}/api/hr/departments/${deptToEdit['department_id']}'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
                                         'name': name,
@@ -467,7 +468,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                                     );
                                   } else {
                                     res = await http.post(
-                                      Uri.parse('http://localhost:5000/api/hr/departments'),
+                                      Uri.parse('${ApiClient.apiHost}/api/hr/departments'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
                                         'name': name,
@@ -573,7 +574,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                final res = await http.delete(Uri.parse('http://localhost:5000/api/hr/departments/$deptId'));
+                final res = await http.delete(Uri.parse('${ApiClient.apiHost}/api/hr/departments/$deptId'));
                 if (res.statusCode == 200) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(

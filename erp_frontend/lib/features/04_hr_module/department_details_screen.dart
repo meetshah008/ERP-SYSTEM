@@ -5,6 +5,7 @@ import '../../core/network/session_manager.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
 import 'employee_details_screen.dart';
+import '../../core/network/api_client.dart';
 
 class DepartmentDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> department;
@@ -68,7 +69,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
 
     try {
       // 1. Fetch all employees to get department roster
-      final empRes = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final eJson = jsonDecode(empRes.body);
         if (eJson['success'] == true && eJson['data'] is List) {
@@ -83,7 +84,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
       }
 
       // 2. Refresh department info
-      final deptRes = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+      final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (deptRes.statusCode == 200) {
         final dJson = jsonDecode(deptRes.body);
         if (dJson['success'] == true && dJson['data'] is List) {
@@ -337,7 +338,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
                                 setDialogState(() => isSaving = true);
                                 try {
                                   final res = await http.put(
-                                    Uri.parse('http://localhost:5000/api/hr/departments/$deptId'),
+                                    Uri.parse('${ApiClient.apiHost}/api/hr/departments/$deptId'),
                                     headers: {'Content-Type': 'application/json'},
                                     body: jsonEncode({
                                       'name': _department['name'],
@@ -406,7 +407,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
 
       try {
         final res = await http.put(
-          Uri.parse('http://localhost:5000/api/hr/departments/${_department['department_id']}'),
+          Uri.parse('${ApiClient.apiHost}/api/hr/departments/${_department['department_id']}'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'name': _department['name'],

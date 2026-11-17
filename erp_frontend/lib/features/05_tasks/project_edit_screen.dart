@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
+import '../../core/network/api_client.dart';
 
 class ProjectEditScreen extends StatefulWidget {
   final Map<String, dynamic>? project; // null means CREATE mode, passed means EDIT mode
@@ -89,7 +90,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
     setState(() => _isLoadingData = true);
     try {
       // 1. Fetch Employees
-      final empRes = await http.get(Uri.parse('http://localhost:5000/api/hr/employees'));
+      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final data = jsonDecode(empRes.body);
         if (data['success'] == true && data['data'] != null) {
@@ -101,7 +102,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       }
 
       // 2. Fetch Departments
-      final deptRes = await http.get(Uri.parse('http://localhost:5000/api/hr/departments'));
+      final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (deptRes.statusCode == 200) {
         final data = jsonDecode(deptRes.body);
         if (data['success'] == true && data['data'] != null) {
@@ -116,7 +117,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       // 3. If Edit mode, load project members
       if (isEdit) {
         final prjId = widget.project!['project_id'];
-        final prjRes = await http.get(Uri.parse('http://localhost:5000/api/projects/$prjId'));
+        final prjRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/projects/$prjId'));
         if (prjRes.statusCode == 200) {
           final data = jsonDecode(prjRes.body);
           if (data['success'] == true && data['data'] != null) {
@@ -167,13 +168,13 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       if (isEdit) {
         final projectId = widget.project!['project_id'];
         res = await http.put(
-          Uri.parse('http://localhost:5000/api/projects/$projectId'),
+          Uri.parse('${ApiClient.apiHost}/api/projects/$projectId'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
         );
       } else {
         res = await http.post(
-          Uri.parse('http://localhost:5000/api/projects'),
+          Uri.parse('${ApiClient.apiHost}/api/projects'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
         );

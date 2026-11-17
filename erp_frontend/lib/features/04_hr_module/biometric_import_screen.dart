@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
+import '../../core/network/api_client.dart';
 
 class BiometricImportScreen extends StatefulWidget {
   const BiometricImportScreen({super.key});
@@ -56,7 +57,7 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
     });
 
     try {
-      final uri = Uri.parse('http://localhost:5000/api/hr/preview-attendance');
+      final uri = Uri.parse('${ApiClient.apiHost}/api/hr/preview-attendance');
       final request = http.MultipartRequest('POST', uri);
       request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
 
@@ -155,7 +156,7 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
     });
 
     try {
-      final uri = Uri.parse('http://localhost:5000/api/hr/upload-attendance');
+      final uri = Uri.parse('${ApiClient.apiHost}/api/hr/upload-attendance');
       final request = http.MultipartRequest('POST', uri);
       request.files.add(
         http.MultipartFile.fromBytes('file', _pickedFileBytes!, filename: _pickedFileName),
