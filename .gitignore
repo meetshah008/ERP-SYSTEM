@@ -2,6 +2,8 @@
 scratch/
 erp_frontend (2).zip
 
+*.zip
+
 # Flutter
 .dart_tool/
 .flutter-plugins
@@ -18,3 +20,4 @@ node_modules/
 
 # Logs
 *.log
+

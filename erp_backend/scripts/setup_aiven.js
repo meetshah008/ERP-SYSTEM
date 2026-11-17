@@ -6,7 +6,11 @@ const dotenv = require('dotenv');
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 async function initAiven() {
-  const dbUrl = process.env.DATABASE_URL;
+  let dbUrl = process.env.DATABASE_URL;
+  if (dbUrl && dbUrl.includes('?')) {
+    dbUrl = dbUrl.split('?')[0];
+  }
+
   const config = dbUrl ? {
     uri: dbUrl,
     ssl: { rejectUnauthorized: false },
