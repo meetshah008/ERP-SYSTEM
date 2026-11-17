@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: erp-backend
+    runtime: node
+    rootDir: erp_backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
