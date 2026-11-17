@@ -31,6 +31,16 @@
 
   <title>erp_frontend</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Unregister legacy cached service workers so latest code is always active
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (var r of registrations) {
+          r.unregister();
+        }
+      });
+    }
+  </script>
 </head>
 <body>
   <!--
