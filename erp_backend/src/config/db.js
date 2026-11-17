@@ -3,17 +3,31 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-// Create connection pool to MySQL
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'root',
-  database: process.env.DB_NAME || 'manufacturing_erp',
-  port: process.env.DB_PORT || 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+// Create connection pool to MySQL (Supports both individual env vars and full DATABASE_URL/Service URI)
+let pool;
+if (process.env.DATABASE_URL) {
+  pool = mysql.createPool({
+    uri: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  });
+} else {
+  pool = mysql.createPool({
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'root',
+    database: process.env.DB_NAME || 'manufacturing_erp',
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    ssl: (process.env.DB_SSL === 'true' || process.env.DB_SSL === 'REQUIRED' || process.env.DB_SSL === 'required')
+      ? { rejectUnauthorized: false }
+      : undefined,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  });
+}
 
 // Test connection & Auto Schema Setup
 async function testConnection() {
