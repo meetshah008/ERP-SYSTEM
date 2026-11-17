@@ -1,13 +1,16 @@
 const mysql = require('mysql2/promise');
 const dotenv = require('dotenv');
 
+const path = require('path');
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 // Create connection pool to MySQL (Supports both individual env vars and full DATABASE_URL/Service URI)
 let pool;
 if (process.env.DATABASE_URL) {
+  let cleanUri = process.env.DATABASE_URL.split('?')[0];
   pool = mysql.createPool({
-    uri: process.env.DATABASE_URL,
+    uri: cleanUri,
     ssl: { rejectUnauthorized: false },
     waitForConnections: true,
     connectionLimit: 10,

@@ -1,4 +1,4 @@
-sys_config-- ============================================================================
+-- ============================================================================
 -- MANUFACTURING ERP SYSTEM - MASTER DATABASE INITIALIZATION SCRIPT (MySQL)
 -- Run this script directly in MySQL Workbench to create all foundation tables.
 -- ============================================================================
