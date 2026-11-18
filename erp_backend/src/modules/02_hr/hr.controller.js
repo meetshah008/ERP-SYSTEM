@@ -1,5 +1,6 @@
 const db = require('../../config/db');
 const xlsx = require('xlsx');
+const { resolveCompanyId } = require('../../utils/tenant');
 
 // Ensure error_logs column exists in ATTENDANCE_IMPORT
 (async () => {
@@ -99,16 +100,20 @@ exports.addEmployee = async (req, res) => {
       });
     }
 
-    // Resolve branch_id
+    // Resolve company_id & branch_id
+    let effCompanyId = resolveCompanyId(req) || company_id;
     let effBranchId = branch_id;
-    if (!effBranchId) {
+    if (!effCompanyId || !effBranchId) {
       try {
-        const [deptRows] = await db.query('SELECT branch_id FROM DEPARTMENT WHERE department_id = ?', [department_id]);
-        effBranchId = (deptRows.length > 0 && deptRows[0].branch_id) ? deptRows[0].branch_id : 1;
-      } catch (_) {
-        effBranchId = 1;
-      }
+        const [deptRows] = await db.query('SELECT company_id, branch_id FROM DEPARTMENT WHERE department_id = ?', [department_id]);
+        if (deptRows.length > 0) {
+          if (!effCompanyId && deptRows[0].company_id) effCompanyId = deptRows[0].company_id;
+          if (!effBranchId && deptRows[0].branch_id) effBranchId = deptRows[0].branch_id;
+        }
+      } catch (_) {}
     }
+    effCompanyId = effCompanyId || 1;
+    effBranchId = effBranchId || 1;
 
     const calculatedPerDayDeduction = (unpaid_leave_per_day_deduction !== undefined && unpaid_leave_per_day_deduction !== '' && unpaid_leave_per_day_deduction !== null)
       ? parseFloat(unpaid_leave_per_day_deduction)
@@ -116,12 +121,13 @@ exports.addEmployee = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO EMPLOYEE
-       (branch_id, department_id, emp_code, biometric_emp_code, full_name, designation, role, phone, email, join_date, status,
+       (company_id, branch_id, department_id, emp_code, biometric_emp_code, full_name, designation, role, phone, email, join_date, status,
         employment_type, weekly_off, salary_grade, salary_base,
         age, gender, dob, city, state, address, aadhar_number, pan_number, emergency_contact,
         leave_balance_casual, leave_balance_sick, leave_balance_paid, unpaid_leave_limit, unpaid_leave_per_day_deduction)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        effCompanyId,
         effBranchId,
         department_id,
         emp_code,
@@ -187,21 +193,21 @@ async function ensureAdminEmployeeRecords() {
 
       let branchId = 1;
       try {
-        const [bRows] = await db.query('SELECT branch_id FROM BRANCH LIMIT 1');
+        const [bRows] = await db.query('SELECT branch_id FROM BRANCH WHERE company_id = ? LIMIT 1', [u.company_id]);
         if (bRows.length > 0) branchId = bRows[0].branch_id;
       } catch (_) {}
 
       let deptId = null;
       try {
-        const [dRows] = await db.query('SELECT department_id FROM DEPARTMENT LIMIT 1');
+        const [dRows] = await db.query('SELECT department_id FROM DEPARTMENT WHERE company_id = ? LIMIT 1', [u.company_id]);
         if (dRows.length > 0) deptId = dRows[0].department_id;
       } catch (_) {}
 
       await db.query(
         `INSERT INTO EMPLOYEE
-         (user_id, branch_id, department_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURDATE(), 'Permanent')`,
-        [u.user_id, branchId, deptId, empCode, cleanName, designation, u.role_name, u.email]
+         (company_id, user_id, branch_id, department_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURDATE(), 'Permanent')`,
+        [u.company_id, u.user_id, branchId, deptId, empCode, cleanName, designation, u.role_name, u.email]
       );
     }
 
@@ -210,7 +216,7 @@ async function ensureAdminEmployeeRecords() {
       await db.query(
         `UPDATE EMPLOYEE e
          JOIN USER u ON e.email = u.email
-         SET e.user_id = u.user_id
+         SET e.user_id = u.user_id, e.company_id = u.company_id
          WHERE e.user_id IS NULL AND e.email IS NOT NULL AND e.email != ''`
       );
     } catch (_) {}
@@ -223,11 +229,21 @@ async function ensureAdminEmployeeRecords() {
 exports.getEmployees = async (req, res) => {
   try {
     await ensureAdminEmployeeRecords();
+    const companyId = resolveCompanyId(req);
+    let whereClause = '';
+    const params = [];
+    if (companyId) {
+      whereClause = 'WHERE (e.company_id = ? OR b.company_id = ? OR u.company_id = ? OR d.company_id = ?)';
+      params.push(companyId, companyId, companyId, companyId);
+    } else {
+      whereClause = 'WHERE 1 = 0';
+    }
+
     let employees = [];
     try {
       const [rows] = await db.query(
         `SELECT e.employee_id, e.user_id, e.emp_code, e.biometric_emp_code, e.full_name, e.designation, e.status,
-                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.branch_id,
+                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.branch_id, e.company_id,
                 e.salary_base, e.salary_grade,
                 COALESCE(r.name, e.role, 'Employee') AS role_name,
                 d.name as department_name, b.name as branch_name
@@ -236,13 +252,15 @@ exports.getEmployees = async (req, res) => {
          LEFT JOIN ROLE r ON u.role_id = r.role_id
          LEFT JOIN BRANCH b ON e.branch_id = b.branch_id
          LEFT JOIN DEPARTMENT d ON e.department_id = d.department_id
-         ORDER BY e.employee_id DESC`
+         ${whereClause}
+         ORDER BY e.employee_id DESC`,
+        params
       );
       employees = rows;
     } catch (_) {
       const [rows] = await db.query(
         `SELECT e.employee_id, e.user_id, e.emp_code, e.biometric_emp_code, e.full_name, e.designation, e.status,
-                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.branch_id,
+                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.branch_id, e.company_id,
                 e.salary_base, e.salary_grade,
                 COALESCE(r.name, 'Employee') AS role_name,
                 d.name as department_name, b.name as branch_name
@@ -251,7 +269,9 @@ exports.getEmployees = async (req, res) => {
          LEFT JOIN ROLE r ON u.role_id = r.role_id
          LEFT JOIN BRANCH b ON e.branch_id = b.branch_id
          LEFT JOIN DEPARTMENT d ON e.department_id = d.department_id
-         ORDER BY e.employee_id DESC`
+         ${whereClause}
+         ORDER BY e.employee_id DESC`,
+        params
       );
       employees = rows;
     }
@@ -306,16 +326,18 @@ exports.getEmployees = async (req, res) => {
 exports.getEmployeeStats = async (req, res) => {
   try {
     await ensureAdminEmployeeRecords().catch(err => console.warn('[Stats] ensureAdmin error:', err.message));
-    const [result] = await db.query('SELECT COUNT(*) as total FROM EMPLOYEE WHERE status = "active"');
+    const companyId = resolveCompanyId(req);
+    let sql = 'SELECT COUNT(*) as total FROM EMPLOYEE WHERE status = "active"';
+    const params = [];
+    if (companyId) {
+      sql += ' AND (company_id = ? OR branch_id IN (SELECT branch_id FROM BRANCH WHERE company_id = ?))';
+      params.push(companyId, companyId);
+    }
+    const [result] = await db.query(sql, params);
     return res.status(200).json({ success: true, total: result && result[0] ? result[0].total : 0 });
   } catch (error) {
     console.error('[Stats] Error:', error.message);
-    try {
-      const [fallback] = await db.query('SELECT COUNT(*) as total FROM EMPLOYEE');
-      return res.status(200).json({ success: true, total: fallback[0].total });
-    } catch (_) {
-      return res.status(200).json({ success: true, total: 0 });
-    }
+    return res.status(200).json({ success: true, total: 0 });
   }
 };
 
@@ -828,6 +850,7 @@ exports.getLeaves = async (req, res) => {
     } catch (_) {}
 
     const { employee_id, user_id } = req.query;
+    const companyId = resolveCompanyId(req);
 
     let query = `
       SELECT l.leave_id, l.employee_id, l.leave_type, l.start_date, l.end_date, l.total_days, l.reason, l.status, l.created_at,
@@ -847,6 +870,11 @@ exports.getLeaves = async (req, res) => {
        WHERE 1=1
     `;
     const params = [];
+
+    if (companyId) {
+      query += ` AND (l.company_id = ? OR e.company_id = ?)`;
+      params.push(companyId, companyId);
+    }
 
     if (employee_id) {
       query += ` AND l.employee_id = ?`;
@@ -1258,6 +1286,15 @@ exports.updateEmployeeStatus = async (req, res) => {
   // ================= 9. DEPARTMENT MANAGEMENT (GET, ADD, UPDATE, DELETE) =================
   exports.getDepartments = async (req, res) => {
     try {
+      const companyId = resolveCompanyId(req);
+      let whereClause = '';
+      const params = [];
+      if (companyId) {
+        whereClause = 'WHERE d.company_id = ?';
+        params.push(companyId);
+      } else {
+        whereClause = 'WHERE 1 = 0';
+      }
       const [departments] = await db.query(`
         SELECT
           d.department_id,
@@ -1266,9 +1303,10 @@ exports.updateEmployeeStatus = async (req, res) => {
           COUNT(e.employee_id) as member_count
         FROM DEPARTMENT d
         LEFT JOIN EMPLOYEE e ON d.department_id = e.department_id AND e.status = 'active'
+        ${whereClause}
         GROUP BY d.department_id, d.company_id, d.name
         ORDER BY d.department_id ASC
-      `);
+      `, params);
 
       return res.status(200).json({ success: true, data: departments });
     } catch (error) {
@@ -1285,21 +1323,16 @@ exports.updateEmployeeStatus = async (req, res) => {
       }
 
       // Automatically find valid company_id
-      let targetCompanyId = company_id;
-      try {
-        const [companies] = await db.query('SELECT company_id FROM COMPANY LIMIT 1');
-        if (companies.length > 0) {
-          targetCompanyId = companies[0].company_id;
-        } else {
-          const [compResult] = await db.query(
-            "INSERT INTO COMPANY (name, code, plan, status) VALUES (?, ?, ?, ?)",
-            ['Enterprise Core', 'ENT-01', 'Enterprise', 'active']
-          );
-          targetCompanyId = compResult.insertId;
-        }
-      } catch (err) {
-        targetCompanyId = targetCompanyId || 1;
+      let targetCompanyId = resolveCompanyId(req) || company_id;
+      if (!targetCompanyId) {
+        try {
+          const [companies] = await db.query('SELECT company_id FROM COMPANY LIMIT 1');
+          if (companies.length > 0) {
+            targetCompanyId = companies[0].company_id;
+          }
+        } catch (_) {}
       }
+      targetCompanyId = targetCompanyId || 1;
 
       const [result] = await db.query(
         'INSERT INTO DEPARTMENT (company_id, name) VALUES (?, ?)',
@@ -1811,6 +1844,7 @@ exports.updateEmployeeStatus = async (req, res) => {
   exports.getAttendanceRecords = async (req, res) => {
     try {
       const { employee_id, date, month, year, start_date, end_date } = req.query;
+      const companyId = resolveCompanyId(req);
 
       let query = `
         SELECT 
@@ -1832,6 +1866,11 @@ exports.updateEmployeeStatus = async (req, res) => {
         WHERE 1=1
       `;
       const params = [];
+
+      if (companyId) {
+        query += ` AND (a.company_id = ? OR e.company_id = ?)`;
+        params.push(companyId, companyId);
+      }
 
       if (employee_id) {
         query += ` AND a.employee_id = ?`;
@@ -1958,6 +1997,7 @@ exports.updateEmployeeStatus = async (req, res) => {
     try {
       await ensureNotificationTable();
       const { user_id, role, can_approve_leaves } = req.query;
+      const companyId = resolveCompanyId(req);
 
       let query = `
         SELECT notification_id, title, message, type, reference_id, target_user_id, target_role, sender_user_id, is_read, created_at
@@ -1965,6 +2005,11 @@ exports.updateEmployeeStatus = async (req, res) => {
         WHERE 1=1
       `;
       const params = [];
+
+      if (companyId) {
+        query += ` AND company_id = ?`;
+        params.push(companyId);
+      }
 
       const uid = user_id ? parseInt(user_id, 10) : null;
       const isAdminOrApprover = role === 'Super Admin' || can_approve_leaves === 'true' || can_approve_leaves === true;
@@ -2242,14 +2287,23 @@ exports.getIncrements = async (req, res) => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    const companyId = resolveCompanyId(req);
+    let whereClause = '';
+    const params = [];
+    if (companyId) {
+      whereClause = 'WHERE (i.company_id = ? OR e.company_id = ?)';
+      params.push(companyId, companyId);
+    }
+
     const [rows] = await db.query(`
       SELECT i.*, e.full_name, e.emp_code, e.department_id, d.name as department_name, u.email as approved_by_email
       FROM EMPLOYEE_INCREMENT i
       JOIN EMPLOYEE e ON i.employee_id = e.employee_id
       LEFT JOIN DEPARTMENT d ON e.department_id = d.department_id
       LEFT JOIN USER u ON i.approved_by = u.user_id
+      ${whereClause}
       ORDER BY i.increment_id DESC
-    `);
+    `, params);
 
     return res.status(200).json({
       success: true,

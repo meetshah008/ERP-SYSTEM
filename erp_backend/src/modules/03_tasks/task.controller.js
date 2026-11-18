@@ -1,4 +1,5 @@
 const db = require('../../config/db');
+const { resolveCompanyId } = require('../../utils/tenant');
 
 
 const sendNotification = async ({ companyId = 1, title, message, type, referenceId, targetUserId }) => {
@@ -45,11 +46,19 @@ exports.createTask = async (req, res) => {
     }
 
     const primaryAssignee = assigneeList[0];
+    let effCompanyId = resolveCompanyId(req) || req.body.company_id;
+    if (!effCompanyId && project_id) {
+      try {
+        const [pRows] = await db.query('SELECT company_id FROM project WHERE project_id = ?', [project_id]);
+        if (pRows.length > 0 && pRows[0].company_id) effCompanyId = pRows[0].company_id;
+      } catch (_) {}
+    }
+    effCompanyId = effCompanyId || 1;
 
     const [result] = await db.query(
-      `INSERT INTO task (assigned_to, project_id, title, description, priority, status, due_date, estimated_hours)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [primaryAssignee, project_id || null, title, description || '', priority || 'MEDIUM', status || 'TODO', due_date || null, estimated_hours || 0]
+      `INSERT INTO task (company_id, assigned_to, project_id, title, description, priority, status, due_date, estimated_hours)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [effCompanyId, primaryAssignee, project_id || null, title, description || '', priority || 'MEDIUM', status || 'TODO', due_date || null, estimated_hours || 0]
     );
 
     const taskId = result.insertId;
@@ -139,13 +148,21 @@ exports.getTasks = async (req, res) => {
       LEFT JOIN project p ON t.project_id = p.project_id
     `;
 
+    const companyId = resolveCompanyId(req);
+    const whereConditions = [];
     const params = [];
+
+    if (companyId) {
+      whereConditions.push('(t.company_id = ? OR p.company_id = ?)');
+      params.push(companyId, companyId);
+    } else {
+      whereConditions.push('1 = 0');
+    }
 
     // Agar filtering requested hai aur non-super-admin employee hai
     if (isFilteringRequested && !isSuperAdmin) {
       if (empId) {
-        query += `
-          WHERE (
+        whereConditions.push(`(
             t.assigned_to = ?
             OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
             OR EXISTS (
@@ -156,13 +173,16 @@ exports.getTasks = async (req, res) => {
               SELECT 1 FROM project pr
               WHERE pr.project_id = t.project_id AND (pr.project_leader_id = ? OR pr.head_user_id = ?)
             )
-          )
-        `;
+          )`);
         params.push(empId, empId, empId, empId, empId);
       } else {
         // Non-admin employee jiska koi employee record linked nahi hai
-        query += ` WHERE 1 = 0 `;
+        whereConditions.push('1 = 0');
       }
+    }
+
+    if (whereConditions.length > 0) {
+      query += ` WHERE ${whereConditions.join(' AND ')} `;
     }
 
     query += ` ORDER BY t.task_id DESC`;

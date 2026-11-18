@@ -97,7 +97,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
   Future<void> _fetchFullProfile({bool setLoadingState = true}) async {
     if (setLoadingState) setState(() => _isLoading = true);
     try {
-      final res = await http.get(
+      final res = await ApiClient.get(
         Uri.parse(
           '$_apiHost/api/hr/employees/${widget.employeeId}/full-profile',
         ),
@@ -130,7 +130,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
       // Fetch departments for edit modal
       try {
-        final deptRes = await http.get(
+        final deptRes = await ApiClient.get(
           Uri.parse('$_apiHost/api/hr/departments'),
         );
         if (deptRes.statusCode == 200) {
@@ -165,7 +165,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
         }
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         if (json['success'] == true) {
@@ -438,7 +438,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                         : () async {
                             setDialogState(() => isSaving = true);
                             try {
-                              final res = await http.put(
+                              final res = await ApiClient.put(
                                 Uri.parse(
                                   '$_apiHost/api/hr/attendance/$attendanceId',
                                 ),
@@ -503,7 +503,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
   Future<void> _savePermissions() async {
     setState(() => _isSavingPermissions = true);
     try {
-      final res = await http.put(
+      final res = await ApiClient.put(
         Uri.parse(
           '$_apiHost/api/hr/employees/${widget.employeeId}/permissions',
         ),
@@ -846,7 +846,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                       return;
                                     setDialogState(() => isSaving = true);
                                     try {
-                                      final res = await http.post(
+                                      final res = await ApiClient.post(
                                         Uri.parse(
                                           '$_apiHost/api/hr/employees/${widget.employeeId}/create-login',
                                         ),

@@ -45,7 +45,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+      final deptRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (deptRes.statusCode == 200) {
         final dJson = jsonDecode(deptRes.body);
         if (dJson['success'] == true && dJson['data'] is List) {
@@ -53,7 +53,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         }
       }
 
-      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
+      final empRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final eJson = jsonDecode(empRes.body);
         if (eJson['success'] == true && eJson['data'] is List) {
@@ -458,7 +458,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                                 try {
                                   http.Response res;
                                   if (isEditing) {
-                                    res = await http.put(
+                                    res = await ApiClient.put(
                                       Uri.parse('${ApiClient.apiHost}/api/hr/departments/${deptToEdit['department_id']}'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
@@ -467,7 +467,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                                       }),
                                     );
                                   } else {
-                                    res = await http.post(
+                                    res = await ApiClient.post(
                                       Uri.parse('${ApiClient.apiHost}/api/hr/departments'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
@@ -574,7 +574,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                final res = await http.delete(Uri.parse('${ApiClient.apiHost}/api/hr/departments/$deptId'));
+                final res = await ApiClient.delete(Uri.parse('${ApiClient.apiHost}/api/hr/departments/$deptId'));
                 if (res.statusCode == 200) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(

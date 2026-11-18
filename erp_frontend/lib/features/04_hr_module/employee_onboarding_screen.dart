@@ -110,7 +110,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   Future<void> _fetchDepartments() async {
     setState(() => _isLoadingDepartments = true);
     try {
-      final res = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+      final res = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['departments'] != null) {
@@ -260,7 +260,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         'unpaid_leave_per_day_deduction': double.tryParse(_unpaidDeductionController.text.trim()) ?? 0.0,
       };
 
-      final res = await http.post(
+      final res = await ApiClient.post(
         Uri.parse('${ApiClient.apiHost}/api/hr/employees'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),

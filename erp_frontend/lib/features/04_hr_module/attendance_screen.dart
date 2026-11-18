@@ -66,7 +66,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         url += 'month=$_selectedMonth&year=$_selectedYear';
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         if (json['success'] == true) {
@@ -546,7 +546,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     onPressed: isSaving ? null : () async {
                       setDialogState(() => isSaving = true);
                       try {
-                        final res = await http.put(
+                        final res = await ApiClient.put(
                           Uri.parse('${ApiClient.apiHost}/api/hr/attendance/$attendanceId'),
                           headers: {'Content-Type': 'application/json'},
                           body: jsonEncode({

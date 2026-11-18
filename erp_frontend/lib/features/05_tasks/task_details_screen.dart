@@ -100,7 +100,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
   Future<void> _fetchProjects() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/projects'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/projects'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (mounted && data['success'] == true && data['data'] != null) {
@@ -141,7 +141,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
   Future<void> _fetchTaskDetails() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/tasks/${widget.taskId}'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/tasks/${widget.taskId}'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['data'] != null && data['data'] is Map) {
@@ -161,7 +161,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
   Future<void> _fetchEmployees() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (mounted) {
@@ -185,7 +185,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     });
 
     try {
-      await http.put(
+      await ApiClient.put(
         Uri.parse('$_apiHost/api/tasks/${widget.taskId}/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': newStatus}),
@@ -213,7 +213,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     });
 
     try {
-      await http.put(
+      await ApiClient.put(
         Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'is_completed': isCompleted}),
@@ -229,7 +229,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
     _newSubtaskCtrl.clear();
     try {
-      final res = await http.post(
+      final res = await ApiClient.post(
         Uri.parse('$_apiHost/api/projects/tasks/${widget.taskId}/subtasks'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'title': title}),
@@ -253,7 +253,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     });
 
     try {
-      await http.delete(Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'));
+      await ApiClient.delete(Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'));
       widget.onTaskUpdated?.call();
     } catch (_) {}
   }
@@ -273,7 +273,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     setState(() => _isLoggingHours = true);
     try {
       final projectId = _task?['project_id'] ?? widget.projectId ?? 1;
-      final res = await http.post(
+      final res = await ApiClient.post(
         Uri.parse('$_apiHost/api/projects/$projectId/timesheets'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -326,7 +326,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     if (confirm != true) return;
 
     try {
-      final res = await http.delete(Uri.parse('$_apiHost/api/tasks/${widget.taskId}'));
+      final res = await ApiClient.delete(Uri.parse('$_apiHost/api/tasks/${widget.taskId}'));
       if (res.statusCode == 200) {
         widget.onTaskUpdated?.call();
         if (mounted) {

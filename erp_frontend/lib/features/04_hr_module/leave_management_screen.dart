@@ -62,7 +62,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
         url += '?user_id=$currentUserId';
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -99,7 +99,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
   // 2. Employees mangwana (Apply leave ke dropdown ke liye)
   Future<void> _fetchEmployees() async {
     try {
-      final res = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
+      final res = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -117,7 +117,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
       final session = await SessionManager.getUserSession();
       final currentUserId = session['userId'] ?? 1;
 
-      final res = await http.put(
+      final res = await ApiClient.put(
         Uri.parse('${ApiClient.apiHost}/api/hr/leaves/$leaveId/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': status, 'approved_by': currentUserId}),
@@ -188,7 +188,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
 
   Future<void> _deleteLeave(int leaveId) async {
     try {
-      final res = await http.delete(Uri.parse('${ApiClient.apiHost}/api/hr/leaves/$leaveId'));
+      final res = await ApiClient.delete(Uri.parse('${ApiClient.apiHost}/api/hr/leaves/$leaveId'));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -597,7 +597,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
                   };
 
                   try {
-                    final res = await http.post(
+                    final res = await ApiClient.post(
                       Uri.parse('${ApiClient.apiHost}/api/hr/leaves'),
                       headers: {'Content-Type': 'application/json'},
                       body: jsonEncode(payload),

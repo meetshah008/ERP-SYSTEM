@@ -59,13 +59,13 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   Future<void> _fetchEmployees() async {
     setState(() => _isLoading = true);
     try {
-      final res = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
+      final res = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         _employees = data['data'] ?? [];
       }
       try {
-        final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+        final deptRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
         if (deptRes.statusCode == 200) {
           final deptData = jsonDecode(deptRes.body);
           _departments = deptData['data'] ?? [];
@@ -274,7 +274,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                 onPressed: isSaving ? null : () async {
                   setDialogState(() => isSaving = true);
                   try {
-                    final res = await http.put(
+                    final res = await ApiClient.put(
                       Uri.parse('${ApiClient.apiHost}/api/hr/employees/${emp['employee_id']}/role'),
                       headers: {'Content-Type': 'application/json'},
                       body: jsonEncode({'role_name': selectedRole}),
@@ -467,7 +467,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   Future<void> _updateStatusApi(int empId, String status, String reason, BuildContext ctx) async {
     Navigator.pop(ctx);
     try {
-      final res = await http.put(
+      final res = await ApiClient.put(
         Uri.parse('${ApiClient.apiHost}/api/hr/employees/$empId/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': status, 'exit_reason': reason}),
@@ -501,7 +501,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () async {
               Navigator.pop(ctx);
-              await http.delete(Uri.parse('${ApiClient.apiHost}/api/hr/employees/$empId'));
+              await ApiClient.delete(Uri.parse('${ApiClient.apiHost}/api/hr/employees/$empId'));
               _fetchEmployees();
             },
             child: const Text('Delete'),

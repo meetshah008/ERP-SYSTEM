@@ -69,7 +69,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
 
     try {
       // 1. Fetch all employees to get department roster
-      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
+      final empRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final eJson = jsonDecode(empRes.body);
         if (eJson['success'] == true && eJson['data'] is List) {
@@ -84,7 +84,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
       }
 
       // 2. Refresh department info
-      final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+      final deptRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (deptRes.statusCode == 200) {
         final dJson = jsonDecode(deptRes.body);
         if (dJson['success'] == true && dJson['data'] is List) {
@@ -337,7 +337,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
                             : () async {
                                 setDialogState(() => isSaving = true);
                                 try {
-                                  final res = await http.put(
+                                  final res = await ApiClient.put(
                                     Uri.parse('${ApiClient.apiHost}/api/hr/departments/$deptId'),
                                     headers: {'Content-Type': 'application/json'},
                                     body: jsonEncode({
@@ -406,7 +406,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
           .toList();
 
       try {
-        final res = await http.put(
+        final res = await ApiClient.put(
           Uri.parse('${ApiClient.apiHost}/api/hr/departments/${_department['department_id']}'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({

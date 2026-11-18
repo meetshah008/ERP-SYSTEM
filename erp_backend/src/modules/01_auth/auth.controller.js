@@ -67,9 +67,9 @@ exports.registerCompany = async (req, res) => {
       const adminDisplayName = admin_name && admin_name.trim() ? admin_name.trim() : (admin_email.split('@')[0]);
       const cleanName = adminDisplayName.charAt(0).toUpperCase() + adminDisplayName.slice(1);
       await connection.query(
-        `INSERT INTO EMPLOYEE (user_id, branch_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
-         VALUES (?, ?, 'ADM-001', ?, 'System Administrator', 'Super Admin', ?, 'active', CURDATE(), 'Permanent')`,
-        [userResult.insertId, branchResult.insertId || 1, cleanName, admin_email]
+        `INSERT INTO EMPLOYEE (company_id, user_id, branch_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
+         VALUES (?, ?, ?, 'ADM-001', ?, 'System Administrator', 'Super Admin', ?, 'active', CURDATE(), 'Permanent')`,
+        [companyId, userResult.insertId, branchResult.insertId || 1, cleanName, admin_email]
       );
     } catch (_) {}
 

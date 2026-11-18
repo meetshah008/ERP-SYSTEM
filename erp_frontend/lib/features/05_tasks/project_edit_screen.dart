@@ -90,7 +90,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
     setState(() => _isLoadingData = true);
     try {
       // 1. Fetch Employees
-      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
+      final empRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final data = jsonDecode(empRes.body);
         if (data['success'] == true && data['data'] != null) {
@@ -102,7 +102,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       }
 
       // 2. Fetch Departments
-      final deptRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+      final deptRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (deptRes.statusCode == 200) {
         final data = jsonDecode(deptRes.body);
         if (data['success'] == true && data['data'] != null) {
@@ -117,7 +117,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       // 3. If Edit mode, load project members
       if (isEdit) {
         final prjId = widget.project!['project_id'];
-        final prjRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/projects/$prjId'));
+        final prjRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/projects/$prjId'));
         if (prjRes.statusCode == 200) {
           final data = jsonDecode(prjRes.body);
           if (data['success'] == true && data['data'] != null) {
@@ -167,13 +167,13 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       final http.Response res;
       if (isEdit) {
         final projectId = widget.project!['project_id'];
-        res = await http.put(
+        res = await ApiClient.put(
           Uri.parse('${ApiClient.apiHost}/api/projects/$projectId'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
         );
       } else {
-        res = await http.post(
+        res = await ApiClient.post(
           Uri.parse('${ApiClient.apiHost}/api/projects'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),

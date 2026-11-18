@@ -108,7 +108,7 @@ class _SalaryIncrementScreenState extends State<SalaryIncrementScreen> {
     setState(() => _isLoading = true);
     try {
       // 1. Fetch Employees
-      final empRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
+      final empRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final data = jsonDecode(empRes.body);
         _employees = data['data'] ?? [];
@@ -121,7 +121,7 @@ class _SalaryIncrementScreenState extends State<SalaryIncrementScreen> {
       }
 
       // 2. Fetch Increments History
-      final histRes = await http.get(Uri.parse('${ApiClient.apiHost}/api/hr/increments'));
+      final histRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/increments'));
       if (histRes.statusCode == 200) {
         final data = jsonDecode(histRes.body);
         _history = data['data'] ?? [];
@@ -190,7 +190,7 @@ class _SalaryIncrementScreenState extends State<SalaryIncrementScreen> {
         'approved_by': 1,
       };
 
-      final res = await http.post(
+      final res = await ApiClient.post(
         Uri.parse('${ApiClient.apiHost}/api/hr/increments'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),

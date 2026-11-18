@@ -132,7 +132,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   Future<void> _fetchDepartments() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/hr/departments'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['data'] != null) {
@@ -219,7 +219,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       final dueDateStr = '${_dueDate.year}-${_dueDate.month.toString().padLeft(2, '0')}-${_dueDate.day.toString().padLeft(2, '0')}';
 
       if (isEdit) {
-        final res = await http.put(
+        final res = await ApiClient.put(
           Uri.parse('$_apiHost/api/tasks/${widget.task!['task_id']}'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
@@ -256,7 +256,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           }
         }
       } else {
-        final res = await http.post(
+        final res = await ApiClient.post(
           Uri.parse('$_apiHost/api/tasks'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({

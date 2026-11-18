@@ -89,7 +89,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     // If empId is null and not super admin, try to resolve from backend
     if (empId == null && !isSuperAdmin && userId != null) {
       try {
-        final res = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
+        final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           if (data['success'] == true && data['data'] is List) {
@@ -171,7 +171,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         url += '?${queryParams.join('&')}';
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -199,7 +199,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         url += '?${queryParams.join('&')}';
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -212,7 +212,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 1.1 DEPARTMENTS MANGWANA
   Future<void> _fetchDepartments() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/hr/departments'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -500,7 +500,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 3. EMPLOYEES MANGWANA
   Future<void> _fetchEmployees() async {
     try {
-      final res = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -529,7 +529,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         url += '?${queryParams.join('&')}';
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -547,7 +547,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 5. TASK STATUS UPDATE (TODO -> IN_PROGRESS -> DONE)
   Future<void> _updateTaskStatus(int taskId, String newStatus) async {
     try {
-      final res = await http.put(
+      final res = await ApiClient.put(
         Uri.parse('$_apiHost/api/tasks/$taskId/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': newStatus}),
@@ -565,7 +565,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // 6. SUBTASK STATUS TICK / UNTICK
   Future<void> _toggleSubtask(int subtaskId, bool isCompleted) async {
     try {
-      final res = await http.put(
+      final res = await ApiClient.put(
         Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'is_completed': isCompleted}),
@@ -672,7 +672,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                         onPressed: () async {
                           Navigator.pop(ctx);
                           try {
-                            final res = await http.delete(
+                            final res = await ApiClient.delete(
                               Uri.parse('$_apiHost/api/projects/${prj['project_id']}'),
                             );
                             if (res.statusCode == 200) {
@@ -798,7 +798,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                         onPressed: () async {
                           Navigator.pop(ctx);
                           try {
-                            final res = await http.delete(
+                            final res = await ApiClient.delete(
                               Uri.parse('$_apiHost/api/tasks/${task['task_id']}'),
                             );
                             print("DELETE STATUS: ${res.statusCode} -> ${res.body}");
@@ -1032,7 +1032,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                                       if (formKey.currentState!.validate()) {
                                         setModalState(() => isSaving = true);
                                         try {
-                                          final res = await http.post(
+                                          final res = await ApiClient.post(
                                             Uri.parse('$_apiHost/api/projects/$projectId/materials'),
                                             headers: {'Content-Type': 'application/json'},
                                             body: jsonEncode({
@@ -1128,7 +1128,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                         onPressed: () async {
                           Navigator.pop(ctx);
                           try {
-                            final res = await http.delete(
+                            final res = await ApiClient.delete(
                               Uri.parse('$_apiHost/api/projects/materials/${m['material_id']}'),
                             );
                             if (res.statusCode == 200) {
@@ -3840,7 +3840,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   onToggleSubtask: (subtaskId, val) => _toggleSubtask(subtaskId, val),
                   onDeleteSubtask: (subtaskId) async {
                     try {
-                      await http.delete(Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'));
+                      await ApiClient.delete(Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'));
                       if (_selectedProject != null) _fetchProjectDetails(_selectedProject!['project_id']);
                     } catch (_) {}
                   },

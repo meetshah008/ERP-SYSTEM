@@ -200,8 +200,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // 1. BACKEND SE LIVE DATA FETCH KARNA
   Future<void> _fetchLiveStats() async {
     try {
+      final session = await SessionManager.getUserSession();
+      final headers = await ApiClient.getHeaders();
+
       // 1. Staff count
-      final res = await http.get(Uri.parse('$_apiHost/api/hr/stats'));
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/stats'), headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true) {
@@ -210,7 +213,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
 
       // Resolve session context for role-based dashboard metrics
-      final session = await SessionManager.getUserSession();
       final role = widget.role.isNotEmpty ? widget.role : (session['role'] as String? ?? 'Super Admin');
       final empId = session['employeeId'];
       final userId = session['userId'];
@@ -224,7 +226,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       final queryString = queryParts.isNotEmpty ? '?${queryParts.join('&')}' : '';
 
       // 2. Tasks count (TODO ya IN_PROGRESS)
-      final taskRes = await http.get(Uri.parse('$_apiHost/api/tasks$queryString'));
+      final taskRes = await ApiClient.get(Uri.parse('$_apiHost/api/tasks$queryString'), headers: headers);
       if (taskRes.statusCode == 200) {
         final taskData = jsonDecode(taskRes.body);
         if (taskData['success'] == true && taskData['data'] is List) {
@@ -235,7 +237,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
 
       // 3. 👈 YEH MISSING THA: Real Employees List Fetch Karna!
-      final empRes = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
+      final empRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'), headers: headers);
       if (empRes.statusCode == 200) {
         final empData = jsonDecode(empRes.body);
         if (empData['success'] == true && empData['data'] is List) {
@@ -244,7 +246,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       }
       // 4. Departments List Fetch Karna
       try {
-        final deptRes = await http.get(Uri.parse('$_apiHost/api/hr/departments'));
+        final deptRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/departments'), headers: headers);
         if (deptRes.statusCode == 200) {
           final deptData = jsonDecode(deptRes.body);
           if (deptData['success'] == true && deptData['data'] is List) {
@@ -254,7 +256,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       } catch (_) {}
       // 5. Projects Fetch Karna & Stats Calculate Karna
       try {
-        final prjRes = await http.get(Uri.parse('$_apiHost/api/projects$queryString'));
+        final prjRes = await ApiClient.get(Uri.parse('$_apiHost/api/projects$queryString'), headers: headers);
         if (prjRes.statusCode == 200) {
           final prjData = jsonDecode(prjRes.body);
           if (prjData['success'] == true && prjData['data'] is List) {
@@ -296,7 +298,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         url += '?${queryParts.join('&')}';
       }
 
-      final res = await http.get(Uri.parse(url));
+      final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         if (json['success'] == true && mounted) {
@@ -357,7 +359,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         url += '?${queryParts.join('&')}';
                       }
 
-                      await http.put(Uri.parse(url));
+                      await ApiClient.put(Uri.parse(url));
                       _fetchNotifications();
                     } catch (_) {}
                     if (mounted) Navigator.pop(ctx);
@@ -430,7 +432,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           ),
                           onTap: () async {
                             try {
-                              await http.put(Uri.parse('$_apiHost/api/hr/notifications/${n['notification_id']}/read'));
+                              await ApiClient.put(Uri.parse('$_apiHost/api/hr/notifications/${n['notification_id']}/read'));
                               _fetchNotifications();
                             } catch (_) {}
                             if (mounted) {
@@ -2835,7 +2837,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (!_hasPermission('hr_manage_departments')) return;
     // 1. Fetch latest employees from backend to ensure up-to-date staff list
     try {
-      final empRes = await http.get(Uri.parse('$_apiHost/api/hr/employees'));
+      final empRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'));
       if (empRes.statusCode == 200) {
         final empData = jsonDecode(empRes.body);
         if (empData['success'] == true && empData['data'] is List) {
@@ -3248,7 +3250,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 if (isEditing) {
                                   final deptId = deptToEdit['department_id'];
                                   try {
-                                    final res = await http.put(
+                                    final res = await ApiClient.put(
                                       Uri.parse('$_apiHost/api/hr/departments/$deptId'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
@@ -3303,7 +3305,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 } else {
                                   // Create New Department
                                   try {
-                                    final res = await http.post(
+                                    final res = await ApiClient.post(
                                       Uri.parse('$_apiHost/api/hr/departments'),
                                       headers: {'Content-Type': 'application/json'},
                                       body: jsonEncode({
@@ -3384,7 +3386,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
             onPressed: () async {
               try {
-                final res = await http.delete(Uri.parse('$_apiHost/api/hr/departments/${dept['department_id']}'));
+                final res = await ApiClient.delete(Uri.parse('$_apiHost/api/hr/departments/${dept['department_id']}'));
                 if (res.statusCode == 200) {
                   setParentModalState(() {
                     _departments.removeWhere((d) => d['department_id'] == dept['department_id']);
@@ -3525,49 +3527,71 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
               const SizedBox(height: 16),
 
-              // Single Row for Ramesh Patel (Live data)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: const Color(0xFF059669).withValues(alpha: 0.2),
-                      child: const Text('RP', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 12)),
+              // Biometric Check-In Roster (Dynamic per company)
+              if (_employees.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'No biometric check-in logs for today yet.',
+                      style: TextStyle(color: textSub, fontSize: 13),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: const Color(0xFF059669).withValues(alpha: 0.2),
+                        child: Text(
+                          (_employees[0]['full_name'] != null && _employees[0]['full_name'].toString().isNotEmpty)
+                              ? _employees[0]['full_name'].toString().substring(0, 1).toUpperCase()
+                              : 'E',
+                          style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_employees[0]['full_name'] ?? 'Staff Member', style: TextStyle(color: textTitle, fontSize: 14, fontWeight: FontWeight.bold)),
+                            Text('${_employees[0]['emp_code'] ?? 'EMP-001'} • Biometric Machine #1001', style: TextStyle(color: textSub, fontSize: 11.5)),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('Ramesh Patel', style: TextStyle(color: textTitle, fontSize: 14, fontWeight: FontWeight.bold)),
-                          Text('EMP-101 • Biometric Machine #1001', style: TextStyle(color: textSub, fontSize: 11.5)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('09:15 AM • Present', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                          ),
+                          const SizedBox(height: 3),
+                          Text('Shift: On-Time', style: TextStyle(color: textSub, fontSize: 11)),
                         ],
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('09:15 AM • Present', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
-                        ),
-                        const SizedBox(height: 3),
-                        Text('Shift: On-Time', style: TextStyle(color: textSub, fontSize: 11)),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(height: 12),
 
               // Audit Summary Tag
@@ -4554,7 +4578,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
         return FutureBuilder<http.Response>(
           // 👈 Backend se is employee ka live performance data manga rahe hain
-          future: http.get(Uri.parse('$_apiHost/api/hr/employees/${emp['employee_id']}/performance')),
+          future: ApiClient.get(Uri.parse('$_apiHost/api/hr/employees/${emp['employee_id']}/performance')),
           builder: (context, snapshot) {
             Map<String, dynamic> perf = {};
             bool isLoading = snapshot.connectionState == ConnectionState.waiting;

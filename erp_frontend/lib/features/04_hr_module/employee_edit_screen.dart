@@ -171,7 +171,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   Future<void> _fetchFullProfile() async {
     setState(() => _isLoading = true);
     try {
-      final res = await http.get(
+      final res = await ApiClient.get(
         Uri.parse(
           '${ApiClient.apiHost}/api/hr/employees/${widget.employeeId}/full-profile',
         ),
@@ -285,7 +285,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
         double.tryParse(_unpaidDeductionController.text.trim()),
       };
 
-      final res = await http.put(
+      final res = await ApiClient.put(
         Uri.parse(
           '${ApiClient.apiHost}/api/hr/employees/${widget.employeeId}/lifecycle',
         ),

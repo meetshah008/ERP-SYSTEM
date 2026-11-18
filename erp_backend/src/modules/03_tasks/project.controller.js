@@ -1,4 +1,5 @@
 const db = require('../../config/db');
+const { resolveCompanyId } = require('../../utils/tenant');
 
 // Notification table check and send helper
 const sendNotification = async ({ companyId = 1, title, message, type, referenceId, targetUserId }) => {
@@ -48,14 +49,17 @@ exports.createProject = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Project Code and Name are required!' });
     }
 
+    const companyId = resolveCompanyId(req) || req.body.company_id || 1;
+
     // A. Project table mein entry daali
     const [result] = await db.query(
       `INSERT INTO project (
-        project_code, project_name, client_name, description,
+        company_id, project_code, project_name, client_name, description,
         department_id, head_user_id, project_leader_id,
         priority, start_date, target_end_date, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
       [
+        companyId,
         project_code,
         project_name,
         client_name || null,
@@ -171,13 +175,21 @@ exports.getProjects = async (req, res) => {
       LEFT JOIN department dept ON p.department_id = dept.department_id
     `;
 
+    const companyId = resolveCompanyId(req);
+    const whereConditions = [];
     const params = [];
+
+    if (companyId) {
+      whereConditions.push('(p.company_id = ? OR dept.company_id = ?)');
+      params.push(companyId, companyId);
+    } else {
+      whereConditions.push('1 = 0');
+    }
 
     // Agar filtering requested hai aur non-super-admin employee hai
     if (isFilteringRequested && !isSuperAdmin) {
       if (empId) {
-        query += `
-          WHERE (
+        whereConditions.push(`(
             p.project_leader_id = ?
             OR p.head_user_id = ?
             OR EXISTS (SELECT 1 FROM project_member pm WHERE pm.project_id = p.project_id AND pm.employee_id = ?)
@@ -186,13 +198,16 @@ exports.getProjects = async (req, res) => {
               LEFT JOIN task_assignees ta ON t.task_id = ta.task_id
               WHERE t.project_id = p.project_id AND (t.assigned_to = ? OR ta.employee_id = ?)
             )
-          )
-        `;
+          )`);
         params.push(empId, empId, empId, empId, empId);
       } else {
         // Non-admin employee jiska koi employee record linked nahi hai
-        query += ` WHERE 1 = 0 `;
+        whereConditions.push('1 = 0');
       }
+    }
+
+    if (whereConditions.length > 0) {
+      query += ` WHERE ${whereConditions.join(' AND ')} `;
     }
 
     query += ` ORDER BY p.project_id DESC`;
