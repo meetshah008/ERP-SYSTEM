@@ -238,16 +238,17 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(7),
+                    width: 32,
+                    height: 32,
+                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFF4F4F5),
-                      borderRadius: BorderRadius.circular(9),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE4E4E7)),
                     ),
-                    child: Icon(
-                      Icons.precision_manufacturing_rounded,
-                      color: isDark ? Colors.white : const Color(0xFF18181B),
-                      size: 19,
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -317,13 +318,21 @@ class _LoginScreenState extends State<LoginScreen> {
         Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              width: 36,
+              height: 36,
+              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: const Color(0xFF059669).withValues(alpha: isDark ? 0.2 : 0.15),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.4)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF059669), size: 22),
+              child: Image.asset('assets/images/app_logo.png', fit: BoxFit.contain),
             ),
             const SizedBox(width: 10),
             const Text(
