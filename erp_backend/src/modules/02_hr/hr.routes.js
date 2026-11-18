@@ -20,6 +20,7 @@ router.put('/attendance/:id', hrController.updateAttendanceRecord);
 router.get('/employees', hrController.getEmployees);
 
 router.get('/stats', hrController.getEmployeeStats);
+router.get('/team-performance', hrController.getTeamPerformanceSummary);
 
 // Salary Increment & Appraisal Routes
 router.post('/increments', hrController.createIncrement);

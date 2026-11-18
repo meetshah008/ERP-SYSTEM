@@ -341,6 +341,100 @@ exports.getEmployeeStats = async (req, res) => {
   }
 };
 
+// ================= 4.1 TEAM REAL-TIME PERFORMANCE SUMMARY =================
+exports.getTeamPerformanceSummary = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req);
+    if (!companyId) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          appraisal_index: 0.0,
+          attendance_rate: 0.0,
+          task_rate: 0.0,
+          quality_rate: 0.0,
+          total_attendance_days: 0,
+          present_days: 0,
+          total_tasks: 0,
+          completed_tasks: 0,
+          total_projects: 0,
+          completed_projects: 0
+        }
+      });
+    }
+
+    // 1. Attendance stats for this company
+    const [attRows] = await db.query(`
+      SELECT
+        COUNT(*) as total_days,
+        SUM(CASE WHEN LOWER(status) = 'present' THEN 1 ELSE 0 END) as present_days
+      FROM ATTENDANCE
+      WHERE (company_id = ? OR employee_id IN (SELECT employee_id FROM EMPLOYEE WHERE company_id = ?))
+    `, [companyId, companyId]);
+
+    const totalDays = Number(attRows[0]?.total_days) || 0;
+    const presentDays = Number(attRows[0]?.present_days) || 0;
+    const attendanceRate = totalDays > 0 ? Number(((presentDays / totalDays) * 100).toFixed(1)) : 0.0;
+
+    // 2. Task stats for this company
+    const [taskRows] = await db.query(`
+      SELECT
+        COUNT(*) as total_tasks,
+        SUM(CASE WHEN UPPER(status) = 'DONE' THEN 1 ELSE 0 END) as completed_tasks
+      FROM task
+      WHERE (company_id = ? OR project_id IN (SELECT project_id FROM project WHERE company_id = ?))
+    `, [companyId, companyId]);
+
+    const totalTasks = Number(taskRows[0]?.total_tasks) || 0;
+    const completedTasks = Number(taskRows[0]?.completed_tasks) || 0;
+    const taskRate = totalTasks > 0 ? Number(((completedTasks / totalTasks) * 100).toFixed(1)) : 0.0;
+
+    // 3. Project stats for this company
+    const [prjRows] = await db.query(`
+      SELECT
+        COUNT(*) as total_projects,
+        SUM(CASE WHEN LOWER(status) = 'completed' THEN 1 ELSE 0 END) as completed_projects
+      FROM project
+      WHERE company_id = ?
+    `, [companyId]);
+
+    const totalProjects = Number(prjRows[0]?.total_projects) || 0;
+    const completedProjects = Number(prjRows[0]?.completed_projects) || 0;
+    const qualityRate = totalProjects > 0 ? Number(((completedProjects / totalProjects) * 100).toFixed(1)) : (totalTasks > 0 ? taskRate : 0.0);
+
+    // 4. Overall Appraisal Index
+    let appraisalIndex = 0.0;
+    const activeMetrics = [];
+    if (totalDays > 0) activeMetrics.push(attendanceRate);
+    if (totalTasks > 0) activeMetrics.push(taskRate);
+    if (totalProjects > 0) activeMetrics.push(qualityRate);
+
+    if (activeMetrics.length > 0) {
+      const sum = activeMetrics.reduce((a, b) => a + b, 0);
+      appraisalIndex = Number((sum / activeMetrics.length).toFixed(1));
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        appraisal_index: appraisalIndex,
+        attendance_rate: attendanceRate,
+        task_rate: taskRate,
+        quality_rate: qualityRate,
+        total_attendance_days: totalDays,
+        present_days: presentDays,
+        total_tasks: totalTasks,
+        completed_tasks: completedTasks,
+        total_projects: totalProjects,
+        completed_projects: completedProjects
+      }
+    });
+  } catch (error) {
+    console.error('Get Team Performance Error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // 4.0 BIOMETRIC EXCEL LIVE PREVIEW (Excel/CSV ko open karke table data bhejna)
 exports.previewBiometricSheet = async (req, res) => {
   try {

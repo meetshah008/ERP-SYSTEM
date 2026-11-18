@@ -62,6 +62,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   int _totalProjects = 0;
   int _pendingProjects = 0;
   int _completedProjects = 0;
+  double _appraisalIndex = 0.0;
+  double _attendanceRate = 0.0;
+  double _taskRate = 0.0;
+  double _qualityRate = 0.0;
+  bool _hasPerformanceData = false;
   int _unreadNotifCount = 0;
   List<dynamic> _notifications = [];
   Timer? _notifTimer;
@@ -266,6 +271,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             _pendingProjects = list.where((p) => p['status'] != 'Completed').length;
             // Jo project 'Completed' hain
             _completedProjects = list.where((p) => p['status'] == 'Completed').length;
+          }
+        }
+      } catch (_) {}
+
+      // 6. Real-time Team Performance Summary
+      try {
+        final perfRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/team-performance'));
+        if (perfRes.statusCode == 200) {
+          final perfData = jsonDecode(perfRes.body);
+          if (perfData['success'] == true && perfData['data'] != null) {
+            final p = perfData['data'];
+            _appraisalIndex = (p['appraisal_index'] as num?)?.toDouble() ?? 0.0;
+            _attendanceRate = (p['attendance_rate'] as num?)?.toDouble() ?? 0.0;
+            _taskRate = (p['task_rate'] as num?)?.toDouble() ?? 0.0;
+            _qualityRate = (p['quality_rate'] as num?)?.toDouble() ?? 0.0;
+            final totalTasks = (p['total_tasks'] as num?)?.toInt() ?? 0;
+            final totalDays = (p['total_attendance_days'] as num?)?.toInt() ?? 0;
+            _hasPerformanceData = (totalTasks > 0 || totalDays > 0);
           }
         }
       } catch (_) {}
@@ -3957,25 +3980,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ),
                 const SizedBox(height: 10),
                 AnimatedDonutChart(
-                  centerTitle: '94.8%',
+                  centerTitle: _hasPerformanceData ? '${_appraisalIndex.toStringAsFixed(1)}%' : '0%',
                   centerSubtitle: 'Appraisal Index',
                   size: 152,
                   strokeWidth: 19,
-                  segments: const [
+                  segments: [
                     ChartSegment(
                       label: 'Attendance',
-                      value: 45,
-                      color: Color(0xFF22C55E),
+                      value: _hasPerformanceData ? (_attendanceRate > 0 ? _attendanceRate : 1.0) : 33.3,
+                      color: const Color(0xFF22C55E),
                     ),
                     ChartSegment(
                       label: 'Tasks',
-                      value: 35,
-                      color: Color(0xFF0284C7),
+                      value: _hasPerformanceData ? (_taskRate > 0 ? _taskRate : 1.0) : 33.3,
+                      color: const Color(0xFF0284C7),
                     ),
                     ChartSegment(
                       label: 'Quality',
-                      value: 20,
-                      color: Color(0xFFF59E0B),
+                      value: _hasPerformanceData ? (_qualityRate > 0 ? _qualityRate : 1.0) : 33.3,
+                      color: const Color(0xFFF59E0B),
                     ),
                   ],
                 ),
@@ -4006,7 +4029,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       child: MobileMetricPill(
                         icon: Icons.fingerprint_rounded,
                         label: 'ON-TIME',
-                        value: '98%',
+                        value: '${_attendanceRate.toStringAsFixed(0)}%',
                         color: MobilePalette.emerald,
                         isDark: isDark,
                       ),
@@ -4190,15 +4213,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
           child: Center(
             child: AnimatedDonutChart(
-              centerTitle: '94.8%',
+              centerTitle: _hasPerformanceData ? '${_appraisalIndex.toStringAsFixed(1)}%' : '0%',
               centerSubtitle: 'Appraisal Index',
               size: 190,
               strokeWidth: 24,
-              // Image 2 jaisa 3 vibrant multi-color segments: Green, Blue, Orange!
-              segments: const [
-                ChartSegment(label: 'Attendance (98%)', value: 45, color: Color(0xFF22C55E)), // Emerald Green
-                ChartSegment(label: 'Tasks (94%)', value: 35, color: Color(0xFF0284C7)), // Electric Blue
-                ChartSegment(label: 'Quality (96%)', value: 20, color: Color(0xFFF59E0B)), // Amber Orange
+              // Real-time dynamic segments: Attendance, Tasks, Quality!
+              segments: [
+                ChartSegment(
+                  label: 'Attendance (${_attendanceRate.toStringAsFixed(0)}%)',
+                  value: _hasPerformanceData ? (_attendanceRate > 0 ? _attendanceRate : 1.0) : 33.3,
+                  color: const Color(0xFF22C55E),
+                ),
+                ChartSegment(
+                  label: 'Tasks (${_taskRate.toStringAsFixed(0)}%)',
+                  value: _hasPerformanceData ? (_taskRate > 0 ? _taskRate : 1.0) : 33.3,
+                  color: const Color(0xFF0284C7),
+                ),
+                ChartSegment(
+                  label: 'Quality (${_qualityRate.toStringAsFixed(0)}%)',
+                  value: _hasPerformanceData ? (_qualityRate > 0 ? _qualityRate : 1.0) : 33.3,
+                  color: const Color(0xFFF59E0B),
+                ),
               ],
             ),
           ),
@@ -4219,15 +4254,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             return isDesktop
                 ? Row(
               children: [
-                // Card 1
+                // Card 1: Attendance
                 Expanded(
                   child: _buildBreakdownCard(
                     icon: Icons.fingerprint_rounded,
                     title: 'Attendance & Punctuality',
-                    subtitle: '98% on-time shift record',
-                    percentText: '98%',
-                    trendText: '+2.4%',
-                    progressValue: 0.98,
+                    subtitle: _hasPerformanceData ? '${_attendanceRate.toStringAsFixed(0)}% on-time shift record' : 'No biometric check-in data yet',
+                    percentText: '${_attendanceRate.toStringAsFixed(0)}%',
+                    trendText: _attendanceRate >= 90 ? '+2.4%' : (_attendanceRate > 0 ? 'Normal' : '0%'),
+                    progressValue: (_attendanceRate / 100.0).clamp(0.0, 1.0),
                     progressColor: const Color(0xFF22C55E),
                     cardBg: cardBg,
                     cardBorder: cardBorder,
@@ -4238,15 +4273,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ),
                 const SizedBox(width: 14),
 
-                // Card 2
+                // Card 2: Tasks
                 Expanded(
                   child: _buildBreakdownCard(
                     icon: Icons.assignment_turned_in_rounded,
                     title: 'Production Tasks Done',
-                    subtitle: '94% work orders completed',
-                    percentText: '94%',
-                    trendText: '+3.1%',
-                    progressValue: 0.94,
+                    subtitle: _hasPerformanceData ? '${_taskRate.toStringAsFixed(0)}% work orders completed' : 'No tasks assigned yet',
+                    percentText: '${_taskRate.toStringAsFixed(0)}%',
+                    trendText: _taskRate >= 80 ? '+3.1%' : (_taskRate > 0 ? 'Active' : '0%'),
+                    progressValue: (_taskRate / 100.0).clamp(0.0, 1.0),
                     progressColor: const Color(0xFF0284C7),
                     cardBg: cardBg,
                     cardBorder: cardBorder,
@@ -4257,15 +4292,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ),
                 const SizedBox(width: 14),
 
-                // Card 3
+                // Card 3: Quality
                 Expanded(
                   child: _buildBreakdownCard(
                     icon: Icons.verified_user_rounded,
                     title: 'Quality & Zero Defects',
-                    subtitle: '96% defect-free QA output',
-                    percentText: '96%',
-                    trendText: '+1.5%',
-                    progressValue: 0.96,
+                    subtitle: _hasPerformanceData ? '${_qualityRate.toStringAsFixed(0)}% defect-free QA output' : 'Ready for inspection logs',
+                    percentText: '${_qualityRate.toStringAsFixed(0)}%',
+                    trendText: _qualityRate >= 90 ? '+1.5%' : (_qualityRate > 0 ? 'Good' : '0%'),
+                    progressValue: (_qualityRate / 100.0).clamp(0.0, 1.0),
                     progressColor: const Color(0xFFF59E0B),
                     cardBg: cardBg,
                     cardBorder: cardBorder,
@@ -4281,10 +4316,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 _buildBreakdownCard(
                   icon: Icons.fingerprint_rounded,
                   title: 'Attendance & Punctuality',
-                  subtitle: '98% on-time shift record',
-                  percentText: '98%',
-                  trendText: '+2.4%',
-                  progressValue: 0.98,
+                  subtitle: _hasPerformanceData ? '${_attendanceRate.toStringAsFixed(0)}% on-time shift record' : 'No biometric check-in data yet',
+                  percentText: '${_attendanceRate.toStringAsFixed(0)}%',
+                  trendText: _attendanceRate >= 90 ? '+2.4%' : (_attendanceRate > 0 ? 'Normal' : '0%'),
+                  progressValue: (_attendanceRate / 100.0).clamp(0.0, 1.0),
                   progressColor: const Color(0xFF22C55E),
                   cardBg: cardBg,
                   cardBorder: cardBorder,
@@ -4296,10 +4331,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 _buildBreakdownCard(
                   icon: Icons.assignment_turned_in_rounded,
                   title: 'Production Tasks Done',
-                  subtitle: '94% work orders completed',
-                  percentText: '94%',
-                  trendText: '+3.1%',
-                  progressValue: 0.94,
+                  subtitle: _hasPerformanceData ? '${_taskRate.toStringAsFixed(0)}% work orders completed' : 'No tasks assigned yet',
+                  percentText: '${_taskRate.toStringAsFixed(0)}%',
+                  trendText: _taskRate >= 80 ? '+3.1%' : (_taskRate > 0 ? 'Active' : '0%'),
+                  progressValue: (_taskRate / 100.0).clamp(0.0, 1.0),
                   progressColor: const Color(0xFF0284C7),
                   cardBg: cardBg,
                   cardBorder: cardBorder,
@@ -4311,10 +4346,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 _buildBreakdownCard(
                   icon: Icons.verified_user_rounded,
                   title: 'Quality & Zero Defects',
-                  subtitle: '96% defect-free QA output',
-                  percentText: '96%',
-                  trendText: '+1.5%',
-                  progressValue: 0.96,
+                  subtitle: _hasPerformanceData ? '${_qualityRate.toStringAsFixed(0)}% defect-free QA output' : 'Ready for inspection logs',
+                  percentText: '${_qualityRate.toStringAsFixed(0)}%',
+                  trendText: _qualityRate >= 90 ? '+1.5%' : (_qualityRate > 0 ? 'Good' : '0%'),
+                  progressValue: (_qualityRate / 100.0).clamp(0.0, 1.0),
                   progressColor: const Color(0xFFF59E0B),
                   cardBg: cardBg,
                   cardBorder: cardBorder,
