@@ -568,7 +568,8 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     final formKey = GlobalKey<FormState>();
     final emailCtrl = TextEditingController(text: emp['email'] ?? '');
     final passCtrl = TextEditingController(text: '123456');
-    String selectedRole = 'Employee';
+    final String selectedRole = emp['role_name'] ?? emp['role'] ?? 'Employee';
+    String selectedStatus = 'Active';
     bool isSaving = false;
     bool obscurePass = true;
 
@@ -758,26 +759,26 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                             ),
                             const SizedBox(height: 12),
                             _buildDropdownField<String>(
-                              label: 'Assigned Role',
-                              value: selectedRole,
+                              label: 'Account Status',
+                              value: selectedStatus,
                               items: const [
                                 DropdownMenuItem(
-                                  value: 'Employee',
-                                  child: Text('Employee (Standard Staff)'),
+                                  value: 'Active',
+                                  child: Text('Active (Can login immediately)'),
                                 ),
                                 DropdownMenuItem(
-                                  value: 'Module Manager',
-                                  child: Text('Module Manager (Supervisor)'),
+                                  value: 'Frozen',
+                                  child: Text('Frozen (Temporary hold)'),
                                 ),
                                 DropdownMenuItem(
-                                  value: 'Super Admin',
-                                  child: Text('Super Admin (Executive)'),
+                                  value: 'Banned',
+                                  child: Text('Banned (Access blocked)'),
                                 ),
                               ],
                               onChanged: (val) => setDialogState(
-                                () => selectedRole = val ?? 'Employee',
+                                () => selectedStatus = val ?? 'Active',
                               ),
-                              icon: Icons.security_rounded,
+                              icon: Icons.toggle_on_outlined,
                               isDark: isDark,
                             ),
                           ],
@@ -857,6 +858,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                           'email': emailCtrl.text.trim(),
                                           'password': passCtrl.text.trim(),
                                           'role_name': selectedRole,
+                                          'status': selectedStatus,
                                         }),
                                       );
                                       final json = jsonDecode(res.body);
@@ -887,6 +889,407 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                             content: Text(
                                               json['message'] ??
                                                   'Creation failed',
+                                            ),
+                                            backgroundColor: Colors.redAccent,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => isSaving = false);
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Error: $e'),
+                                          backgroundColor: Colors.redAccent,
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                    }
+                                  },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 3B. Reset Password Modal
+  void _openResetPasswordDialog() {
+    final emp = _data['employee'] ?? {};
+    final formKey = GlobalKey<FormState>();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
+    bool isSaving = false;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final isDark = ThemeController.isDarkMode.value;
+          final dialogBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+          final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+          final textSub = isDark
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF64748B);
+          final borderColor = isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : const Color(0xFFE2E8F0);
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 24,
+            ),
+            child: Container(
+              width: 440,
+              decoration: BoxDecoration(
+                color: dialogBg,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.03)
+                            : const Color(0xFFF8FAFC),
+                        border: Border(bottom: BorderSide(color: borderColor)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3B82F6)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.lock_reset_rounded,
+                              color: Color(0xFF3B82F6),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Reset Login Password',
+                                  style: TextStyle(
+                                    color: titleColor,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'For ${emp['full_name'] ?? 'Staff Member'} (${emp['user_email'] ?? 'Account'})',
+                                  style: TextStyle(
+                                    color: textSub,
+                                    fontSize: 11.5,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            color: textSub,
+                            onPressed: isSaving
+                                ? null
+                                : () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'New Password *',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : const Color(0xFF475569),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                TextFormField(
+                                  controller: newPassCtrl,
+                                  obscureText: obscureNew,
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) {
+                                      return 'Password is required';
+                                    }
+                                    if (v.trim().length < 6) {
+                                      return 'Minimum 6 characters required';
+                                    }
+                                    return null;
+                                  },
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF0F172A),
+                                    fontSize: 13,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter new password',
+                                    prefixIcon: Icon(
+                                      Icons.lock_outline,
+                                      color: isDark
+                                          ? Colors.white54
+                                          : Colors.black45,
+                                      size: 17,
+                                    ),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        obscureNew
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        size: 17,
+                                      ),
+                                      onPressed: () => setDialogState(
+                                        () => obscureNew = !obscureNew,
+                                      ),
+                                    ),
+                                    filled: true,
+                                    fillColor: isDark
+                                        ? Colors.white.withValues(alpha: 0.05)
+                                        : const Color(0xFFF1F5F9),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 11,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: isDark
+                                            ? Colors.white12
+                                            : Colors.black12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Confirm New Password *',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : const Color(0xFF475569),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                TextFormField(
+                                  controller: confirmPassCtrl,
+                                  obscureText: obscureConfirm,
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) {
+                                      return 'Please confirm password';
+                                    }
+                                    if (v.trim() != newPassCtrl.text.trim()) {
+                                      return 'Passwords do not match';
+                                    }
+                                    return null;
+                                  },
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF0F172A),
+                                    fontSize: 13,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Re-enter new password',
+                                    prefixIcon: Icon(
+                                      Icons.lock_outline,
+                                      color: isDark
+                                          ? Colors.white54
+                                          : Colors.black45,
+                                      size: 17,
+                                    ),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        obscureConfirm
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        size: 17,
+                                      ),
+                                      onPressed: () => setDialogState(
+                                        () => obscureConfirm = !obscureConfirm,
+                                      ),
+                                    ),
+                                    filled: true,
+                                    fillColor: isDark
+                                        ? Colors.white.withValues(alpha: 0.05)
+                                        : const Color(0xFFF1F5F9),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 11,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: isDark
+                                            ? Colors.white12
+                                            : Colors.black12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.02)
+                            : const Color(0xFFF8FAFC),
+                        border: Border(top: BorderSide(color: borderColor)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: isSaving
+                                ? null
+                                : () => Navigator.pop(ctx),
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(color: textSub),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2563EB),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              elevation: 0,
+                            ),
+                            icon: isSaving
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_rounded, size: 16),
+                            label: Text(
+                              isSaving ? 'Updating...' : 'Update Password',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                                    if (!formKey.currentState!.validate()) {
+                                      return;
+                                    }
+                                    setDialogState(() => isSaving = true);
+                                    try {
+                                      final res = await ApiClient.post(
+                                        Uri.parse(
+                                          '$_apiHost/api/hr/employees/${widget.employeeId}/reset-password',
+                                        ),
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                        },
+                                        body: jsonEncode({
+                                          'new_password':
+                                              newPassCtrl.text.trim(),
+                                        }),
+                                      );
+                                      final json = jsonDecode(res.body);
+                                      if (res.statusCode == 200 &&
+                                          json['success'] == true) {
+                                        Navigator.pop(ctx);
+                                        _fetchFullProfile();
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              json['message'] ??
+                                                  'Password updated successfully!',
+                                            ),
+                                            backgroundColor: const Color(
+                                              0xFF059669,
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      } else {
+                                        setDialogState(() => isSaving = false);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              json['message'] ??
+                                                  'Failed to reset password',
                                             ),
                                             backgroundColor: Colors.redAccent,
                                             behavior: SnackBarBehavior.floating,
@@ -2504,96 +2907,406 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
           cardBorder: cardBorder,
           textTitle: textTitle,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6.5),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Login Username / Email',
-                    style: TextStyle(color: textSub, fontSize: 12.5),
-                  ),
-                  emp['user_email'] != null
-                      ? Text(
-                          emp['user_email'],
+            if (emp['user_email'] == null && emp['user_id'] == null) ...[
+              // NO ACCOUNT LINKED: Show Create Login Button
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Login Account',
                           style: TextStyle(
                             color: textTitle,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
-                        )
-                      : (_canManageStaff
-                            ? ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF059669),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 7,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                icon: const Icon(
-                                  Icons.person_add_alt_1_rounded,
-                                  size: 14,
-                                ),
-                                label: const Text(
-                                  'Create Login',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                onPressed: _openCreateLoginDialog,
-                              )
-                            : Text(
-                                'No Account Linked',
-                                style: TextStyle(
-                                  color: textSub,
-                                  fontSize: 12,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              )),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'No portal login account linked to this employee profile.',
+                          style: TextStyle(color: textSub, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                    _canManageStaff
+                        ? ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF059669),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: 0,
+                            ),
+                            icon: const Icon(
+                              Icons.person_add_alt_1_rounded,
+                              size: 14,
+                            ),
+                            label: const Text(
+                              'Create Login',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            onPressed: _openCreateLoginDialog,
+                          )
+                        : Text(
+                            'No Account Linked',
+                            style: TextStyle(
+                              color: textSub,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+              const Divider(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'System Access Status',
+                          style: TextStyle(
+                            color: textTitle,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          'Create a login account to activate portal credentials',
+                          style: TextStyle(color: textSub, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white12
+                            : const Color(0xFFCBD5E1),
+                      ),
+                    ),
+                    child: Text(
+                      'NOT CONFIGURED',
+                      style: TextStyle(
+                        color: textSub,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            ),
-            const Divider(height: 18),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'System Access Status',
-                        style: TextStyle(
-                          color: textTitle,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+            ] else ...[
+              // ACCOUNT EXISTS: Display credentials, role, status & secure password reset!
+              // 1. Login Email / Username
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.alternate_email_rounded,
+                          size: 16,
+                          color: textSub,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Login Email / Username',
+                          style: TextStyle(color: textSub, fontSize: 12.5),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white10
+                              : const Color(0xFFE2E8F0),
                         ),
                       ),
-                      Text(
-                        _userActive
-                            ? 'Employee can login and perform duties'
-                            : 'Account is frozen / banned',
-                        style: TextStyle(color: textSub, fontSize: 11),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.verified_user_outlined,
+                            size: 13,
+                            color: Color(0xFF059669),
+                          ),
+                          const SizedBox(width: 6),
+                          SelectableText(
+                            (emp['user_email'] ?? '').toString(),
+                            style: TextStyle(
+                              color: textTitle,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 18),
+
+              // 2. Assigned Role
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.security_rounded,
+                          size: 16,
+                          color: textSub,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Assigned Role',
+                          style: TextStyle(color: textSub, fontSize: 12.5),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: (emp['role_name'] == 'Super Admin'
+                                ? const Color(0xFF8B5CF6)
+                                : emp['role_name'] == 'Module Manager'
+                                    ? const Color(0xFF3B82F6)
+                                    : const Color(0xFF059669))
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: (emp['role_name'] == 'Super Admin'
+                                  ? const Color(0xFF8B5CF6)
+                                  : emp['role_name'] == 'Module Manager'
+                                      ? const Color(0xFF3B82F6)
+                                      : const Color(0xFF059669))
+                              .withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            emp['role_name'] == 'Super Admin'
+                                ? Icons.admin_panel_settings_rounded
+                                : emp['role_name'] == 'Module Manager'
+                                    ? Icons.manage_accounts_rounded
+                                    : Icons.badge_outlined,
+                            size: 13,
+                            color: emp['role_name'] == 'Super Admin'
+                                ? const Color(0xFF8B5CF6)
+                                : emp['role_name'] == 'Module Manager'
+                                    ? const Color(0xFF3B82F6)
+                                    : const Color(0xFF059669),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            (emp['role_name'] ?? _selectedRole).toString(),
+                            style: TextStyle(
+                              color: emp['role_name'] == 'Super Admin'
+                                  ? const Color(0xFF8B5CF6)
+                                  : emp['role_name'] == 'Module Manager'
+                                      ? const Color(0xFF3B82F6)
+                                      : const Color(0xFF059669),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 18),
+
+              // 3. Account Status (Active / Frozen / Banned)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Account Status',
+                              style: TextStyle(
+                                color: textTitle,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _userActive
+                                    ? const Color(0xFF059669)
+                                        .withValues(alpha: 0.12)
+                                    : const Color(0xFFEF4444)
+                                        .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: _userActive
+                                      ? const Color(0xFF059669)
+                                      : const Color(0xFFEF4444),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                _userActive ? 'ACTIVE' : 'FROZEN / BANNED',
+                                style: TextStyle(
+                                  color: _userActive
+                                      ? const Color(0xFF059669)
+                                      : const Color(0xFFEF4444),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _userActive
+                              ? 'Employee can log in and perform assigned duties'
+                              : 'System login access is currently frozen or banned',
+                          style: TextStyle(color: textSub, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
+                  Switch(
+                    value: _userActive,
+                    activeColor: const Color(0xFF059669),
+                    onChanged: _canManageStaff
+                        ? (v) => setState(() => _userActive = v)
+                        : null,
+                  ),
+                ],
+              ),
+              const Divider(height: 18),
+
+              // 4. Password Information & Reset Option
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Password & Security',
+                          style: TextStyle(
+                            color: textTitle,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(
+                              '••••••••••••',
+                              style: TextStyle(
+                                color: textSub,
+                                fontSize: 12,
+                                letterSpacing: 2,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '(Bcrypt encrypted)',
+                              style: TextStyle(
+                                color: textSub,
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(
+                        Icons.lock_reset_rounded,
+                        size: 14,
+                      ),
+                      label: const Text(
+                        'Reset Password',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onPressed:
+                          _canManageStaff ? _openResetPasswordDialog : null,
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: _userActive,
-                  activeColor: const Color(0xFF059669),
-                  onChanged: _canManageStaff
-                      ? (v) => setState(() => _userActive = v)
-                      : null,
-                ),
-              ],
-            ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 16),

@@ -63,6 +63,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   final _unpaidLimitController = TextEditingController(text: '10');
   final _unpaidDeductionController = TextEditingController(text: '1166.67');
 
+  // ================= 5. LOGIN ACCOUNT DETAILS (STEP 5) =================
+  bool _enableLoginAccount = false;
+  final _loginEmailController = TextEditingController();
+  final _loginPasswordController = TextEditingController(text: '123456');
+  String _selectedLoginRole = 'Employee';
+  String _selectedLoginStatus = 'Active'; // Active, Frozen, Banned
+  bool _obscureLoginPassword = true;
+
   @override
   void initState() {
     super.initState();
@@ -104,13 +112,17 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     _paidLeaveController.dispose();
     _unpaidLimitController.dispose();
     _unpaidDeductionController.dispose();
+
+    _loginEmailController.dispose();
+    _loginPasswordController.dispose();
     super.dispose();
   }
 
   Future<void> _fetchDepartments() async {
     setState(() => _isLoadingDepartments = true);
     try {
-      final res = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+      final res = await ApiClient.get(
+          Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['departments'] != null) {
@@ -136,12 +148,27 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   }
 
   String _formatDateDb(DateTime d) {
-    return "${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+    return "${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(
+        2, '0')}-${d.day.toString().padLeft(2, '0')}";
   }
 
   String _formatDateDisplay(DateTime d) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return "${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}";
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return "${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d
+        .year}";
   }
 
   int get _totalPaidLeaves {
@@ -153,22 +180,28 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
 
   Future<void> _submitOnboarding() async {
     // 1. Validate Company Details
-    if (_empCodeController.text.trim().isEmpty) {
+    if (_empCodeController.text
+        .trim()
+        .isEmpty) {
       setState(() => _activeTabIndex = 0);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter an Employee Code in Step 1 (Company Details)!'),
+          content: Text(
+              'Please enter an Employee Code in Step 1 (Company Details)!'),
           backgroundColor: Colors.redAccent,
         ),
       );
       return;
     }
 
-    if (_designationController.text.trim().isEmpty) {
+    if (_designationController.text
+        .trim()
+        .isEmpty) {
       setState(() => _activeTabIndex = 0);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter Designation / Post in Step 1 (Company Details)!'),
+          content: Text(
+              'Please enter Designation / Post in Step 1 (Company Details)!'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -187,15 +220,47 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     }
 
     // 2. Validate Personal Details
-    if (_fullNameController.text.trim().isEmpty) {
-      setState(() => _activeTabIndex = 1);
+    if (_fullNameController.text
+        .trim()
+        .isEmpty) {
+      setState(() => _activeTabIndex = 0);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter Full Name in Step 2 (Employee Details)!'),
+          content: Text('Please enter Full Name in Step 1 (Personal Details)!'),
           backgroundColor: Colors.redAccent,
         ),
       );
       return;
+    }
+
+    // 3. Validate Login Account (Step 5 - Optional)
+    if (_enableLoginAccount) {
+      if (_loginEmailController.text
+          .trim()
+          .isEmpty) {
+        setState(() => _activeTabIndex = 4);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Please enter Login Email / Username in Step 5 (Login Account)!'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+      if (_loginPasswordController.text
+          .trim()
+          .length < 6) {
+        setState(() => _activeTabIndex = 4);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Initial password must be at least 6 characters in Step 5 (Login Account)!'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
     }
 
     if (!_formKey.currentState!.validate()) {
@@ -215,7 +280,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       int effBranchId = 1;
       if (_selectedDepartmentId != null && _departments.isNotEmpty) {
         final dept = _departments.firstWhere(
-          (d) => d['department_id'] == _selectedDepartmentId,
+              (d) => d['department_id'] == _selectedDepartmentId,
           orElse: () => null,
         );
         if (dept != null && dept['branch_id'] != null) {
@@ -230,34 +295,68 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         'department_id': _selectedDepartmentId,
         'role': _selectedRole,
         'emp_code': _empCodeController.text.trim().toUpperCase(),
-        'biometric_emp_code': _biometricCodeController.text.trim().isEmpty ? null : _biometricCodeController.text.trim(),
+        'biometric_emp_code': _biometricCodeController.text
+            .trim()
+            .isEmpty ? null : _biometricCodeController.text.trim(),
         'designation': _designationController.text.trim(),
-        'email': _officialEmailController.text.trim().isEmpty ? null : _officialEmailController.text.trim(),
+        'email': _officialEmailController.text
+            .trim()
+            .isEmpty ? null : _officialEmailController.text.trim(),
         'employment_type': _selectedEmploymentType,
         'join_date': _formatDateDb(_joinDate),
         'weekly_off': _selectedWeeklyOff,
         'salary_grade': _selectedSalaryGrade,
-        'salary_base': double.tryParse(_salaryBaseController.text.trim()) ?? 35000.0,
+        'salary_base': double.tryParse(_salaryBaseController.text.trim()) ??
+            35000.0,
 
         // 2. Personal & Identity
         'full_name': _fullNameController.text.trim(),
         'age': int.tryParse(_ageController.text.trim()) ?? 25,
         'gender': _selectedGender,
         'dob': _formatDateDb(_dob),
-        'phone': _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
-        'emergency_contact': _emergencyContactController.text.trim().isEmpty ? null : _emergencyContactController.text.trim(),
-        'aadhar_number': _aadharController.text.trim().isEmpty ? null : _aadharController.text.trim(),
-        'pan_number': _panController.text.trim().isEmpty ? null : _panController.text.trim().toUpperCase(),
-        'city': _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
-        'state': _stateController.text.trim().isEmpty ? null : _stateController.text.trim(),
-        'address': _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+        'phone': _phoneController.text
+            .trim()
+            .isEmpty ? null : _phoneController.text.trim(),
+        'emergency_contact': _emergencyContactController.text
+            .trim()
+            .isEmpty ? null : _emergencyContactController.text.trim(),
+        'aadhar_number': _aadharController.text
+            .trim()
+            .isEmpty ? null : _aadharController.text.trim(),
+        'pan_number': _panController.text
+            .trim()
+            .isEmpty ? null : _panController.text.trim().toUpperCase(),
+        'city': _cityController.text
+            .trim()
+            .isEmpty ? null : _cityController.text.trim(),
+        'state': _stateController.text
+            .trim()
+            .isEmpty ? null : _stateController.text.trim(),
+        'address': _addressController.text
+            .trim()
+            .isEmpty ? null : _addressController.text.trim(),
 
         // 3. Leaves & Deductions
-        'leave_balance_casual': int.tryParse(_casualLeaveController.text.trim()) ?? 12,
-        'leave_balance_sick': int.tryParse(_sickLeaveController.text.trim()) ?? 8,
-        'leave_balance_paid': int.tryParse(_paidLeaveController.text.trim()) ?? 15,
-        'unpaid_leave_limit': int.tryParse(_unpaidLimitController.text.trim()) ?? 10,
-        'unpaid_leave_per_day_deduction': double.tryParse(_unpaidDeductionController.text.trim()) ?? 0.0,
+        'leave_balance_casual': int.tryParse(
+            _casualLeaveController.text.trim()) ?? 12,
+        'leave_balance_sick': int.tryParse(_sickLeaveController.text.trim()) ??
+            8,
+        'leave_balance_paid': int.tryParse(_paidLeaveController.text.trim()) ??
+            15,
+        'unpaid_leave_limit': int.tryParse(
+            _unpaidLimitController.text.trim()) ?? 10,
+        'unpaid_leave_per_day_deduction': double.tryParse(
+            _unpaidDeductionController.text.trim()) ?? 0.0,
+
+        // 4. Optional Login Account (Step 5)
+        'create_login': _enableLoginAccount,
+        'login_email': _enableLoginAccount
+            ? _loginEmailController.text.trim()
+            : null,
+        'login_password': _enableLoginAccount ? _loginPasswordController.text
+            .trim() : null,
+        'login_role': _enableLoginAccount ? _selectedRole : null,
+        'login_status': _enableLoginAccount ? _selectedLoginStatus : null,
       };
 
       final res = await ApiClient.post(
@@ -277,7 +376,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 10),
-                Text('Employee ${payload['full_name']} onboarded successfully!'),
+                Expanded(
+                  child: Text(
+                    resData['message'] ??
+                        'Employee ${payload['full_name']} onboarded successfully!',
+                  ),
+                ),
               ],
             ),
             backgroundColor: const Color(0xFF059669),
@@ -311,7 +415,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeController.isDarkMode.value;
-    final isMobile = MediaQuery.of(context).size.width < 700;
+    final isMobile = MediaQuery
+        .of(context)
+        .size
+        .width < 700;
     final headerBg = isDark ? const Color(0xFF0F172A) : Colors.white;
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final subtextColor = isDark ? Colors.white70 : const Color(0xFF64748B);
@@ -328,65 +435,74 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
           // 3. Tab Content View
           Expanded(
             child: _isLoadingDepartments
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)))
+                ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF10B981)))
                 : Form(
-                    key: _formKey,
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 14 : 24,
-                        vertical: isMobile ? 14 : 20,
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 960),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Tab Content View (IndexedStack preserves state & allows full validation)
-                              IndexedStack(
-                                index: _activeTabIndex,
-                                children: [
-                                  _buildEmployeeTabContent(isDark, isMobile),       // Step 1: Employee Details
-                                  _buildCompanyTabContent(isDark, isMobile),        // Step 2: Company Details
-                                  _buildLeavesTabContent(isDark, isMobile),         // Step 3: Leaves & Deductions
-                                  _buildSalaryTemplateTabContent(isDark, isMobile), // Step 4: Salary Template
-                                ],
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              // Security notice below card (matches mockup)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.lock_outline,
-                                    size: 14,
-                                    color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Data encrypted with 256-bit AES corporate security',
-                                    style: TextStyle(
-                                      color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
-                                      fontSize: 11.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              if (!isMobile) ...[
-                                const SizedBox(height: 24),
-                                // Tab Step Navigation Bottom Row (Desktop only)
-                                _buildStepNavigationRow(isDark, isMobile),
-                              ],
-                              const SizedBox(height: 20),
-                            ],
-                          ),
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 14 : 24,
+                  vertical: isMobile ? 14 : 20,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 960),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Tab Content View (IndexedStack preserves state & allows full validation)
+                        IndexedStack(
+                          index: _activeTabIndex,
+                          children: [
+                            _buildEmployeeTabContent(isDark, isMobile),
+                            // Step 1: Employee Details
+                            _buildCompanyTabContent(isDark, isMobile),
+                            // Step 2: Company Details
+                            _buildLeavesTabContent(isDark, isMobile),
+                            // Step 3: Leaves & Deductions
+                            _buildSalaryTemplateTabContent(isDark, isMobile),
+                            // Step 4: Salary Template
+                            _buildLoginAccountTabContent(isDark, isMobile),
+                            // Step 5: Login Account
+                          ],
                         ),
-                      ),
+
+                        const SizedBox(height: 16),
+
+                        // Security notice below card (matches mockup)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.lock_outline,
+                              size: 14,
+                              color: isDark ? Colors.white38 : const Color(
+                                  0xFF94A3B8),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Data encrypted with 256-bit AES corporate security',
+                              style: TextStyle(
+                                color: isDark ? Colors.white38 : const Color(
+                                    0xFF94A3B8),
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (!isMobile) ...[
+                          const SizedBox(height: 24),
+                          // Tab Step Navigation Bottom Row (Desktop only)
+                          _buildStepNavigationRow(isDark, isMobile),
+                        ],
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
+                ),
+              ),
+            ),
           ),
 
           // 4. Fixed Sticky Bottom Action Bar on Mobile
@@ -403,14 +519,15 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       body: isMobile
           ? mainContent
           : BotanicalBackground(
-              showThemeToggle: false,
-              child: mainContent,
-            ),
+        showThemeToggle: false,
+        child: mainContent,
+      ),
     );
   }
 
   // ================= 1. TOP BAR =================
-  Widget _buildTopBar(Color bg, Color textColor, Color subtextColor, bool isDark, bool isMobile) {
+  Widget _buildTopBar(Color bg, Color textColor, Color subtextColor,
+      bool isDark, bool isMobile) {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 14 : 20,
@@ -420,7 +537,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         color: bg.withValues(alpha: 0.95),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(
+                0xFFE2E8F0),
           ),
         ),
       ),
@@ -428,7 +546,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         children: [
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.arrow_back, color: isDark ? Colors.white70 : const Color(0xFF334155), size: 20),
+            icon: Icon(Icons.arrow_back,
+                color: isDark ? Colors.white70 : const Color(0xFF334155),
+                size: 20),
             tooltip: 'Go Back',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -450,8 +570,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'Step ${_activeTabIndex + 1} of 4: ${_getTabSubtitle(_activeTabIndex)}',
-                  style: TextStyle(color: subtextColor, fontSize: isMobile ? 11.5 : 12),
+                  'Step ${_activeTabIndex + 1} of 5: ${_getTabSubtitle(
+                      _activeTabIndex)}',
+                  style: TextStyle(
+                      color: subtextColor, fontSize: isMobile ? 11.5 : 12),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -474,7 +596,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                     : const Color(0xFFECFDF5),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0),
+                  color: isDark ? const Color(0xFF059669) : const Color(
+                      0xFFA7F3D0),
                 ),
               ),
               child: Row(
@@ -484,10 +607,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                     const SizedBox(
                       width: 12,
                       height: 12,
-                      child: CircularProgressIndicator(color: Color(0xFF047857), strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF047857), strokeWidth: 2),
                     )
                   else
-                    const Icon(Icons.check_rounded, size: 14, color: Color(0xFF047857)),
+                    const Icon(Icons.check_rounded, size: 14,
+                        color: Color(0xFF047857)),
                   const SizedBox(width: 5),
                   Text(
                     _isSaving ? 'Saving...' : 'Save Draft',
@@ -516,6 +641,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         return 'Leave Policy & Salary Deductions';
       case 3:
         return 'Salary Template & Structure';
+      case 4:
+        return 'Portal Credentials & System Role';
       default:
         return '';
     }
@@ -531,6 +658,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         return 'Leave Policy & Salary Deductions';
       case 3:
         return 'Salary Template & Structure';
+      case 4:
+        return 'ERP Login Account Creation';
       default:
         return '';
     }
@@ -538,8 +667,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
 
   // ================= 2. TOP OPTIONS BAR (4 STEPS) =================
   Widget _buildTopOptionsBar(bool isDark, bool isMobile) {
-    final barBg = isDark ? const Color(0xFF1E293B).withValues(alpha: 0.9) : Colors.white;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0);
+    final barBg = isDark
+        ? const Color(0xFF1E293B).withValues(alpha: 0.9)
+        : Colors.white;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : const Color(0xFFE2E8F0);
 
     if (isMobile) {
       return Container(
@@ -560,6 +693,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildMobileStepItem(2, 'Leaves', isDark),
               const SizedBox(width: 8),
               _buildMobileStepItem(3, 'Salary', isDark),
+              const SizedBox(width: 8),
+              _buildMobileStepItem(4, 'Login', isDark),
             ],
           ),
         ),
@@ -575,7 +710,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       ),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960),
+          constraints: const BoxConstraints(maxWidth: 1040),
           child: Row(
             children: [
               Expanded(
@@ -588,7 +723,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   isDark: isDark,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _buildOptionTabItem(
                   index: 1,
@@ -599,7 +734,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   isDark: isDark,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _buildOptionTabItem(
                   index: 2,
@@ -610,7 +745,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   isDark: isDark,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _buildOptionTabItem(
                   index: 3,
@@ -618,6 +753,17 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   title: '4. Salary Template',
                   subtitle: 'Future Compensation (Blank)',
                   accentColor: const Color(0xFF8B5CF6),
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildOptionTabItem(
+                  index: 4,
+                  icon: Icons.vpn_key_outlined,
+                  title: '5. Login Account',
+                  subtitle: 'Credentials & Role (Optional)',
+                  accentColor: const Color(0xFF06B6D4),
                   isDark: isDark,
                 ),
               ),
@@ -638,8 +784,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
-              ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.35) : const Color(0xFFECFDF5))
-              : (isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF1F5F9)),
+              ? (isDark
+              ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+              : const Color(0xFFECFDF5))
+              : (isDark ? Colors.white.withValues(alpha: 0.06) : const Color(
+              0xFFF1F5F9)),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
@@ -678,7 +827,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               label,
               style: TextStyle(
                 color: isSelected
-                    ? (isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
+                    ? (isDark ? const Color(0xFF34D399) : const Color(
+                    0xFF047857))
                     : (isDark ? Colors.white70 : const Color(0xFF64748B)),
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
@@ -697,13 +847,16 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     } else if (_activeTabIndex == 2) {
       nextLabel = 'Next: Salary Template';
     } else if (_activeTabIndex == 3) {
+      nextLabel = 'Next: Login Account';
+    } else if (_activeTabIndex == 4) {
       nextLabel = 'Complete Onboarding';
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.95) : Colors.white.withValues(alpha: 0.98),
+        color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.95) : Colors
+            .white.withValues(alpha: 0.98),
         border: Border(
           top: BorderSide(
             color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
@@ -732,8 +885,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               },
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 13),
-                side: BorderSide(color: isDark ? Colors.white24 : const Color(0xFFE2E8F0)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                side: BorderSide(
+                    color: isDark ? Colors.white24 : const Color(0xFFE2E8F0)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 backgroundColor: isDark ? Colors.transparent : Colors.white,
               ),
               child: Text(
@@ -752,31 +907,40 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             flex: 2,
             child: ElevatedButton(
               onPressed: () {
-                if (_activeTabIndex < 3) {
+                if (_activeTabIndex < 4) {
                   if (_activeTabIndex == 0) {
-                    if (_fullNameController.text.trim().isEmpty) {
+                    if (_fullNameController.text
+                        .trim()
+                        .isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Please enter Full Name before proceeding!'),
+                          content: Text(
+                              'Please enter Full Name before proceeding!'),
                           backgroundColor: Colors.orangeAccent,
                         ),
                       );
                       return;
                     }
                   } else if (_activeTabIndex == 1) {
-                    if (_empCodeController.text.trim().isEmpty) {
+                    if (_empCodeController.text
+                        .trim()
+                        .isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Please enter Employee Code before proceeding!'),
+                          content: Text(
+                              'Please enter Employee Code before proceeding!'),
                           backgroundColor: Colors.orangeAccent,
                         ),
                       );
                       return;
                     }
-                    if (_designationController.text.trim().isEmpty) {
+                    if (_designationController.text
+                        .trim()
+                        .isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Please enter Designation before proceeding!'),
+                          content: Text(
+                              'Please enter Designation before proceeding!'),
                           backgroundColor: Colors.orangeAccent,
                         ),
                       );
@@ -792,7 +956,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 backgroundColor: const Color(0xFF059669),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 elevation: 1,
               ),
               child: Row(
@@ -800,11 +965,13 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 children: [
                   Text(
                     _isSaving ? 'Saving...' : nextLabel,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   const SizedBox(width: 8),
                   Icon(
-                    _activeTabIndex == 3 ? Icons.check_circle_outline : Icons.arrow_forward_rounded,
+                    _activeTabIndex == 3 ? Icons.check_circle_outline : Icons
+                        .arrow_forward_rounded,
                     size: 16,
                     color: Colors.white,
                   ),
@@ -826,8 +993,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     required bool isDark,
   }) {
     final isSelected = _activeTabIndex == index;
-    final activeBg = isDark ? accentColor.withValues(alpha: 0.18) : accentColor.withValues(alpha: 0.1);
-    final inactiveBg = isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC);
+    final activeBg = isDark ? accentColor.withValues(alpha: 0.18) : accentColor
+        .withValues(alpha: 0.1);
+    final inactiveBg = isDark
+        ? Colors.white.withValues(alpha: 0.04)
+        : const Color(0xFFF8FAFC);
     final textColor = isSelected
         ? accentColor
         : (isDark ? Colors.white70 : const Color(0xFF475569));
@@ -842,17 +1012,18 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
           color: isSelected ? activeBg : inactiveBg,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? accentColor : (isDark ? Colors.white10 : Colors.black12),
+            color: isSelected ? accentColor : (isDark ? Colors.white10 : Colors
+                .black12),
             width: isSelected ? 1.8 : 1.0,
           ),
           boxShadow: isSelected
               ? [
-                  BoxShadow(
-                    color: accentColor.withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ]
               : null,
         ),
         child: Row(
@@ -860,12 +1031,16 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             Container(
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: isSelected ? accentColor : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                color: isSelected ? accentColor : (isDark
+                    ? Colors.white10
+                    : Colors.black.withValues(alpha: 0.05)),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 icon,
-                color: isSelected ? Colors.white : (isDark ? Colors.white60 : Colors.black54),
+                color: isSelected ? Colors.white : (isDark
+                    ? Colors.white60
+                    : Colors.black54),
                 size: 16,
               ),
             ),
@@ -880,7 +1055,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                     style: TextStyle(
                       color: textColor,
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight
+                          .w600,
                     ),
                   ),
                   Text(
@@ -948,12 +1124,16 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             children: [
               _buildLabel('Assign Department *', isDark),
               DropdownButtonFormField<int>(
-                initialValue: _departments.any((d) => d['department_id'] == _selectedDepartmentId)
+                initialValue: _departments.any((d) =>
+                d['department_id'] == _selectedDepartmentId)
                     ? _selectedDepartmentId
-                    : (_departments.isNotEmpty ? _departments.first['department_id'] : null),
-                decoration: _inputDecoration('Select Department', Icons.apartment, isDark),
+                    : (_departments.isNotEmpty ? _departments
+                    .first['department_id'] : null),
+                decoration: _inputDecoration(
+                    'Select Department', Icons.apartment, isDark),
                 dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
                 items: _departments.map((d) {
                   return DropdownMenuItem<int>(
                     value: d['department_id'],
@@ -972,13 +1152,18 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('System Role *', isDark),
               DropdownButtonFormField<String>(
                 initialValue: _selectedRole,
-                decoration: _inputDecoration('Assign Role', Icons.shield_outlined, isDark),
+                decoration: _inputDecoration(
+                    'Assign Role', Icons.shield_outlined, isDark),
                 dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
                 items: const [
-                  DropdownMenuItem(value: 'Employee', child: Text('Employee (Standard Staff)')),
-                  DropdownMenuItem(value: 'Module Manager', child: Text('Module Manager (Supervisor)')),
-                  DropdownMenuItem(value: 'Super Admin', child: Text('Super Admin (Executive)')),
+                  DropdownMenuItem(value: 'Employee',
+                      child: Text('Employee (Standard Staff)')),
+                  DropdownMenuItem(value: 'Module Manager',
+                      child: Text('Module Manager (Supervisor)')),
+                  DropdownMenuItem(value: 'Super Admin',
+                      child: Text('Super Admin (Executive)')),
                 ],
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedRole = val);
@@ -998,9 +1183,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Employee Code *', isDark),
               TextFormField(
                 controller: _empCodeController,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                decoration: _inputDecoration('e.g. EMP-101', Icons.badge_outlined, isDark),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Employee Code required' : null,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
+                decoration: _inputDecoration(
+                    'e.g. EMP-101', Icons.badge_outlined, isDark),
+                validator: (v) =>
+                (v == null || v
+                    .trim()
+                    .isEmpty) ? 'Employee Code required' : null,
               ),
             ],
           ),
@@ -1010,8 +1200,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Biometric Machine ID (Face Scanner)', isDark),
               TextFormField(
                 controller: _biometricCodeController,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                decoration: _inputDecoration('e.g. 1001 (Face Scanner Device ID)', Icons.fingerprint, isDark),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
+                decoration: _inputDecoration(
+                    'e.g. 1001 (Face Scanner Device ID)', Icons.fingerprint,
+                    isDark),
               ),
             ],
           ),
@@ -1027,9 +1220,15 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Designation / Post *', isDark),
               TextFormField(
                 controller: _designationController,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                decoration: _inputDecoration('e.g. Production Manager / Senior Operator', Icons.work_outline, isDark),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Designation required' : null,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
+                decoration: _inputDecoration(
+                    'e.g. Production Manager / Senior Operator',
+                    Icons.work_outline, isDark),
+                validator: (v) =>
+                (v == null || v
+                    .trim()
+                    .isEmpty) ? 'Designation required' : null,
               ),
             ],
           ),
@@ -1040,8 +1239,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               TextFormField(
                 controller: _officialEmailController,
                 keyboardType: TextInputType.emailAddress,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                decoration: _inputDecoration('e.g. staff@company.com', Icons.alternate_email, isDark),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
+                decoration: _inputDecoration(
+                    'e.g. staff@company.com', Icons.alternate_email, isDark),
               ),
             ],
           ),
@@ -1057,17 +1258,24 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Employment Type', isDark),
               DropdownButtonFormField<String>(
                 initialValue: _selectedEmploymentType,
-                decoration: _inputDecoration('Type', Icons.assignment_ind_outlined, isDark),
+                decoration: _inputDecoration(
+                    'Type', Icons.assignment_ind_outlined, isDark),
                 dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
                 items: const [
-                  DropdownMenuItem(value: 'Permanent', child: Text('Permanent (Full Time)')),
-                  DropdownMenuItem(value: 'Probation', child: Text('Probation (Trial)')),
-                  DropdownMenuItem(value: 'Contractual', child: Text('Contractual')),
-                  DropdownMenuItem(value: 'Intern', child: Text('Intern / Trainee')),
+                  DropdownMenuItem(
+                      value: 'Permanent', child: Text('Permanent (Full Time)')),
+                  DropdownMenuItem(
+                      value: 'Probation', child: Text('Probation (Trial)')),
+                  DropdownMenuItem(
+                      value: 'Contractual', child: Text('Contractual')),
+                  DropdownMenuItem(
+                      value: 'Intern', child: Text('Intern / Trainee')),
                 ],
                 onChanged: (val) {
-                  if (val != null) setState(() => _selectedEmploymentType = val);
+                  if (val != null) setState(() =>
+                  _selectedEmploymentType = val);
                 },
               ),
             ],
@@ -1078,15 +1286,19 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Weekly Off Day', isDark),
               DropdownButtonFormField<String>(
                 initialValue: _selectedWeeklyOff,
-                decoration: _inputDecoration('Off Day', Icons.weekend_outlined, isDark),
+                decoration: _inputDecoration(
+                    'Off Day', Icons.weekend_outlined, isDark),
                 dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
                 items: const [
                   DropdownMenuItem(value: 'Sunday', child: Text('Sunday')),
-                  DropdownMenuItem(value: 'Saturday & Sunday', child: Text('Saturday & Sunday')),
+                  DropdownMenuItem(value: 'Saturday & Sunday',
+                      child: Text('Saturday & Sunday')),
                   DropdownMenuItem(value: 'Monday', child: Text('Monday')),
                   DropdownMenuItem(value: 'Friday', child: Text('Friday')),
-                  DropdownMenuItem(value: 'Rotational', child: Text('Rotational')),
+                  DropdownMenuItem(
+                      value: 'Rotational', child: Text('Rotational')),
                 ],
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedWeeklyOff = val);
@@ -1116,19 +1328,27 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 },
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 13),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF8FAFC),
-                    border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : const Color(0xFFF8FAFC),
+                    border: Border.all(
+                        color: isDark ? Colors.white12 : Colors.black12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_month_outlined, color: Color(0xFF3B82F6), size: 18),
+                      const Icon(Icons.calendar_month_outlined,
+                          color: Color(0xFF3B82F6), size: 18),
                       const SizedBox(width: 10),
                       Text(
                         _formatDateDisplay(_joinDate),
-                        style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500),
                       ),
                       const Spacer(),
                       const Icon(Icons.arrow_drop_down, color: Colors.grey),
@@ -1144,14 +1364,20 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Salary Grade', isDark),
               DropdownButtonFormField<String>(
                 initialValue: _selectedSalaryGrade,
-                decoration: _inputDecoration('Grade', Icons.grade_outlined, isDark),
+                decoration: _inputDecoration(
+                    'Grade', Icons.grade_outlined, isDark),
                 dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
                 items: const [
-                  DropdownMenuItem(value: 'Grade A (Executive)', child: Text('Grade A (Executive)')),
-                  DropdownMenuItem(value: 'Grade B (Senior Staff)', child: Text('Grade B (Senior Staff)')),
-                  DropdownMenuItem(value: 'Grade C (Standard)', child: Text('Grade C (Standard Staff)')),
-                  DropdownMenuItem(value: 'Grade D (Junior)', child: Text('Grade D (Junior / Trainee)')),
+                  DropdownMenuItem(value: 'Grade A (Executive)',
+                      child: Text('Grade A (Executive)')),
+                  DropdownMenuItem(value: 'Grade B (Senior Staff)',
+                      child: Text('Grade B (Senior Staff)')),
+                  DropdownMenuItem(value: 'Grade C (Standard)',
+                      child: Text('Grade C (Standard Staff)')),
+                  DropdownMenuItem(value: 'Grade D (Junior)',
+                      child: Text('Grade D (Junior / Trainee)')),
                 ],
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedSalaryGrade = val);
@@ -1169,13 +1395,22 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             _buildLabel('Monthly Base Salary (₹) *', isDark),
             TextFormField(
               controller: _salaryBaseController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14, fontWeight: FontWeight.bold),
-              decoration: _inputDecoration('35000', Icons.currency_rupee, isDark).copyWith(
+              keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold),
+              decoration: _inputDecoration(
+                  '35000', Icons.currency_rupee, isDark).copyWith(
                 helperText: 'Base salary is automatically linked to daily unpaid leave deduction rate in Tab 3.',
-                helperStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black45, fontSize: 11),
+                helperStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.black45,
+                    fontSize: 11),
               ),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Base Salary is required' : null,
+              validator: (v) =>
+              (v == null || v
+                  .trim()
+                  .isEmpty) ? 'Base Salary is required' : null,
             ),
           ],
         ),
@@ -1200,9 +1435,15 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             _buildLabel('Full Name *', isDark),
             TextFormField(
               controller: _fullNameController,
-              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
-              decoration: _inputDecoration('e.g. Ramesh Patel', Icons.person_outline, isDark),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Full Name is required' : null,
+              style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 13.5),
+              decoration: _inputDecoration(
+                  'e.g. Ramesh Patel', Icons.person_outline, isDark),
+              validator: (v) =>
+              (v == null || v
+                  .trim()
+                  .isEmpty) ? 'Full Name is required' : null,
             ),
           ],
         ),
@@ -1216,9 +1457,15 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             TextFormField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
-              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
-              decoration: _inputDecoration('e.g. 9876543210', Icons.phone_outlined, isDark),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Phone number is required' : null,
+              style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 13.5),
+              decoration: _inputDecoration(
+                  'e.g. 9876543210', Icons.phone_outlined, isDark),
+              validator: (v) =>
+              (v == null || v
+                  .trim()
+                  .isEmpty) ? 'Phone number is required' : null,
             ),
           ],
         ),
@@ -1236,8 +1483,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   TextFormField(
                     controller: _ageController,
                     keyboardType: TextInputType.number,
-                    style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
-                    decoration: _inputDecoration('28', Icons.cake_outlined, isDark),
+                    style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        fontSize: 13.5),
+                    decoration: _inputDecoration(
+                        '28', Icons.cake_outlined, isDark),
                   ),
                 ],
               ),
@@ -1250,9 +1500,13 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   _buildLabel('Gender', isDark),
                   DropdownButtonFormField<String>(
                     initialValue: _selectedGender,
-                    decoration: _inputDecoration('Gender', Icons.wc_outlined, isDark),
-                    dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                    style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
+                    decoration: _inputDecoration(
+                        'Gender', Icons.wc_outlined, isDark),
+                    dropdownColor: isDark ? const Color(0xFF0F172A) : Colors
+                        .white,
+                    style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        fontSize: 13.5),
                     items: const [
                       DropdownMenuItem(value: 'Male', child: Text('Male')),
                       DropdownMenuItem(value: 'Female', child: Text('Female')),
@@ -1285,34 +1539,45 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 if (picked != null) {
                   setState(() {
                     _dob = picked;
-                    final diffYears = DateTime.now().year - picked.year;
+                    final diffYears = DateTime
+                        .now()
+                        .year - picked.year;
                     _ageController.text = diffYears.toString();
                   });
                 }
               },
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
-                  border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.04)
+                      : const Color(0xFFF8FAFC),
+                  border: Border.all(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_today_outlined, color: isDark ? Colors.white38 : const Color(0xFF94A3B8), size: 18),
+                    Icon(Icons.calendar_today_outlined,
+                        color: isDark ? Colors.white38 : const Color(
+                            0xFF94A3B8), size: 18),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         _formatDateDisplay(_dob),
                         style: TextStyle(
-                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          color: isDark ? Colors.white : const Color(
+                              0xFF0F172A),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
-                    Icon(Icons.keyboard_arrow_down_rounded, color: isDark ? Colors.white38 : const Color(0xFF94A3B8), size: 20),
+                    Icon(Icons.keyboard_arrow_down_rounded,
+                        color: isDark ? Colors.white38 : const Color(
+                            0xFF94A3B8), size: 20),
                   ],
                 ),
               ),
@@ -1329,8 +1594,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             TextFormField(
               controller: _emergencyContactController,
               keyboardType: TextInputType.phone,
-              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
-              decoration: _inputDecoration('e.g. 9812345678 (Father / Spouse)', Icons.contact_phone_outlined, isDark),
+              style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 13.5),
+              decoration: _inputDecoration('e.g. 9812345678 (Father / Spouse)',
+                  Icons.contact_phone_outlined, isDark),
             ),
           ],
         ),
@@ -1350,7 +1618,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 fontFamily: 'monospace',
                 letterSpacing: 0.5,
               ),
-              decoration: _inputDecoration('12 Digit Aadhar (e.g. 1234 5678 9012)', Icons.credit_card_outlined, isDark),
+              decoration: _inputDecoration(
+                  '12 Digit Aadhar (e.g. 1234 5678 9012)',
+                  Icons.credit_card_outlined, isDark),
             ),
           ],
         ),
@@ -1360,7 +1630,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildLabel('PAN Card Number', isDark, tag: '10-DIGIT ALPHANUMERIC'),
+            _buildLabel(
+                'PAN Card Number', isDark, tag: '10-DIGIT ALPHANUMERIC'),
             TextFormField(
               controller: _panController,
               textCapitalization: TextCapitalization.characters,
@@ -1370,7 +1641,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 fontFamily: 'monospace',
                 letterSpacing: 0.5,
               ),
-              decoration: _inputDecoration('e.g. ABCDE1234F', Icons.badge_outlined, isDark),
+              decoration: _inputDecoration(
+                  'e.g. ABCDE1234F', Icons.badge_outlined, isDark),
             ),
           ],
         ),
@@ -1387,7 +1659,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   _buildLabel('City', isDark),
                   TextFormField(
                     controller: _cityController,
-                    style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
+                    style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        fontSize: 13.5),
                     decoration: _inputDecoration('e.g. Mumbai', null, isDark),
                   ),
                 ],
@@ -1401,8 +1675,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   _buildLabel('State', isDark),
                   TextFormField(
                     controller: _stateController,
-                    style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
-                    decoration: _inputDecoration('e.g. Maharashtra', null, isDark),
+                    style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        fontSize: 13.5),
+                    decoration: _inputDecoration(
+                        'e.g. Maharashtra', null, isDark),
                   ),
                 ],
               ),
@@ -1419,8 +1696,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             TextFormField(
               controller: _addressController,
               maxLines: 3,
-              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontSize: 13.5),
-              decoration: _inputDecoration('Flat No, Building Name, Street Address, Landmark & Pincode...', null, isDark),
+              style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 13.5),
+              decoration: _inputDecoration(
+                  'Flat No, Building Name, Street Address, Landmark & Pincode...',
+                  null, isDark),
             ),
           ],
         ),
@@ -1431,8 +1712,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   // ================= TAB 3: LEAVES & DEDUCTIONS =================
   Widget _buildLeavesTabContent(bool isDark, bool isMobile) {
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
-    final baseSalary = double.tryParse(_salaryBaseController.text.trim()) ?? 0.0;
-    final perDayDeduction = double.tryParse(_unpaidDeductionController.text.trim()) ?? 0.0;
+    final baseSalary = double.tryParse(_salaryBaseController.text.trim()) ??
+        0.0;
+    final perDayDeduction = double.tryParse(
+        _unpaidDeductionController.text.trim()) ?? 0.0;
 
     return _buildTabCardContainer(
       title: 'Leave Policy & Salary Deduction Rules',
@@ -1448,16 +1731,20 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+            border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.info_outline, color: Color(0xFFF59E0B), size: 20),
+              const Icon(
+                  Icons.info_outline, color: Color(0xFFF59E0B), size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Configure annual paid leave quotas (Casual, Sick, Annual) and per-day salary deduction for unpaid leaves (LWP).',
-                  style: TextStyle(color: textColor, fontSize: isMobile ? 11.5 : 12.5, height: 1.3),
+                  style: TextStyle(color: textColor,
+                      fontSize: isMobile ? 11.5 : 12.5,
+                      height: 1.3),
                 ),
               ),
             ],
@@ -1479,8 +1766,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                       controller: _casualLeaveController,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                      decoration: _inputDecoration('12', Icons.event_available, isDark),
+                      style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 13),
+                      decoration: _inputDecoration(
+                          '12', Icons.event_available, isDark),
                     ),
                   ],
                 ),
@@ -1495,8 +1785,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                       controller: _sickLeaveController,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                      decoration: _inputDecoration('8', Icons.healing_outlined, isDark),
+                      style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 13),
+                      decoration: _inputDecoration(
+                          '8', Icons.healing_outlined, isDark),
                     ),
                   ],
                 ),
@@ -1512,7 +1805,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 controller: _paidLeaveController,
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() {}),
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
                 decoration: _inputDecoration('15', Icons.star_border, isDark),
               ),
             ],
@@ -1530,8 +1824,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                       controller: _casualLeaveController,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                      decoration: _inputDecoration('12', Icons.event_available, isDark),
+                      style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 13),
+                      decoration: _inputDecoration(
+                          '12', Icons.event_available, isDark),
                     ),
                   ],
                 ),
@@ -1546,8 +1843,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                       controller: _sickLeaveController,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                      decoration: _inputDecoration('8', Icons.healing_outlined, isDark),
+                      style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 13),
+                      decoration: _inputDecoration(
+                          '8', Icons.healing_outlined, isDark),
                     ),
                   ],
                 ),
@@ -1562,8 +1862,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                       controller: _paidLeaveController,
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-                      decoration: _inputDecoration('15', Icons.star_border, isDark),
+                      style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontSize: 13),
+                      decoration: _inputDecoration(
+                          '15', Icons.star_border, isDark),
                     ),
                   ],
                 ),
@@ -1578,16 +1881,20 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF10B981).withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+            border: Border.all(
+                color: const Color(0xFF10B981).withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.verified_outlined, color: Color(0xFF10B981), size: 18),
+              const Icon(
+                  Icons.verified_outlined, color: Color(0xFF10B981), size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Total Paid Quota: $_totalPaidLeaves Days / Year (Casual + Sick + Annual)',
-                  style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 12.5),
+                  style: const TextStyle(color: Color(0xFF10B981),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12.5),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1600,12 +1907,16 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildLabel('Maximum Allowed Unpaid Leaves Limit (Days / Year)', isDark),
+            _buildLabel(
+                'Maximum Allowed Unpaid Leaves Limit (Days / Year)', isDark),
             TextFormField(
               controller: _unpaidLimitController,
               keyboardType: TextInputType.number,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
-              decoration: _inputDecoration('e.g. 10 (Allowed Unpaid Leaves limit before action)', Icons.event_busy_outlined, isDark),
+              style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+              decoration: _inputDecoration(
+                  'e.g. 10 (Allowed Unpaid Leaves limit before action)',
+                  Icons.event_busy_outlined, isDark),
             ),
           ],
         ),
@@ -1622,9 +1933,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildQuickCalcButton('Auto (Base / 30)', () => _recalcDeduction(30), isDark),
+                    _buildQuickCalcButton(
+                        'Auto (Base / 30)', () => _recalcDeduction(30), isDark),
                     const SizedBox(width: 8),
-                    _buildQuickCalcButton('Auto (Base / 26 Days)', () => _recalcDeduction(26), isDark),
+                    _buildQuickCalcButton(
+                        'Auto (Base / 26 Days)', () => _recalcDeduction(26),
+                        isDark),
                   ],
                 ),
               ),
@@ -1637,9 +1951,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               _buildLabel('Unpaid Leave Deduction Per Day (₹) *', isDark),
               Row(
                 children: [
-                  _buildQuickCalcButton('Auto (Base / 30)', () => _recalcDeduction(30), isDark),
+                  _buildQuickCalcButton(
+                      'Auto (Base / 30)', () => _recalcDeduction(30), isDark),
                   const SizedBox(width: 8),
-                  _buildQuickCalcButton('Auto (Base / 26 Working Days)', () => _recalcDeduction(26), isDark),
+                  _buildQuickCalcButton('Auto (Base / 26 Working Days)', () =>
+                      _recalcDeduction(26), isDark),
                 ],
               ),
             ],
@@ -1654,14 +1970,19 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             fontSize: 17,
             fontWeight: FontWeight.bold,
           ),
-          decoration: _inputDecoration('1166.67', Icons.currency_rupee, isDark).copyWith(
+          decoration: _inputDecoration('1166.67', Icons.currency_rupee, isDark)
+              .copyWith(
             suffixIcon: IconButton(
-              icon: const Icon(Icons.calculate_outlined, color: Color(0xFF3B82F6)),
+              icon: const Icon(
+                  Icons.calculate_outlined, color: Color(0xFF3B82F6)),
               tooltip: 'Recalculate based on base salary (₹$baseSalary)',
               onPressed: () => _recalcDeduction(30),
             ),
           ),
-          validator: (v) => (v == null || v.trim().isEmpty) ? 'Deduction amount required' : null,
+          validator: (v) =>
+          (v == null || v
+              .trim()
+              .isEmpty) ? 'Deduction amount required' : null,
         ),
         const SizedBox(height: 20),
 
@@ -1669,10 +1990,13 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         Container(
           padding: EdgeInsets.all(isMobile ? 12 : 16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.6) : const Color(0xFFF1F5F9),
+            color: isDark
+                ? const Color(0xFF0F172A).withValues(alpha: 0.6)
+                : const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
+              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors
+                  .black.withValues(alpha: 0.08),
             ),
           ),
           child: Column(
@@ -1680,27 +2004,44 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.receipt_long_outlined, color: Color(0xFF10B981), size: 20),
+                  const Icon(
+                      Icons.receipt_long_outlined, color: Color(0xFF10B981),
+                      size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'Payroll Deduction Rule Preview',
-                    style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(color: textColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              _buildPreviewRow('Monthly Base Salary', '₹${baseSalary.toStringAsFixed(2)}', isDark),
+              _buildPreviewRow(
+                  'Monthly Base Salary', '₹${baseSalary.toStringAsFixed(2)}',
+                  isDark),
               const SizedBox(height: 8),
-              _buildPreviewRow('Daily Deduction Rate', '₹${perDayDeduction.toStringAsFixed(2)} / Day', isDark, isDeduction: true),
+              _buildPreviewRow('Daily Deduction Rate',
+                  '₹${perDayDeduction.toStringAsFixed(2)} / Day', isDark,
+                  isDeduction: true),
               const Divider(height: 20),
               Text(
-                '• If the employee has 1 unapproved / unpaid leave (LWP), ₹${perDayDeduction.toStringAsFixed(2)} will be deducted from monthly payroll.',
-                style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12, height: 1.4),
+                '• If the employee has 1 unapproved / unpaid leave (LWP), ₹${perDayDeduction
+                    .toStringAsFixed(
+                    2)} will be deducted from monthly payroll.',
+                style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 12,
+                    height: 1.4),
               ),
               const SizedBox(height: 4),
               Text(
-                '• Taking 3 unpaid leaves results in a total salary deduction of ₹${(perDayDeduction * 3).toStringAsFixed(2)}.',
-                style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12, height: 1.4),
+                '• Taking 3 unpaid leaves results in a total salary deduction of ₹${(perDayDeduction *
+                    3).toStringAsFixed(2)}.',
+                style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 12,
+                    height: 1.4),
               ),
             ],
           ),
@@ -1720,7 +2061,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     required List<Widget> children,
   }) {
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : const Color(0xFFE2E8F0);
     final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final subtitleColor = isDark ? Colors.white60 : const Color(0xFF64748B);
 
@@ -1820,11 +2163,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       children: [
         Container(
           width: double.infinity,
-          padding: EdgeInsets.symmetric(vertical: isMobile ? 24 : 40, horizontal: isMobile ? 14 : 20),
+          padding: EdgeInsets.symmetric(
+              vertical: isMobile ? 24 : 40, horizontal: isMobile ? 14 : 20),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.03) : const Color(0xFFF8FAFC),
+            color: isDark ? Colors.white.withValues(alpha: 0.03) : const Color(
+                0xFFF8FAFC),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isDark ? Colors.white10 : Colors.black12, style: BorderStyle.solid),
+            border: Border.all(color: isDark ? Colors.white10 : Colors.black12,
+                style: BorderStyle.solid),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1835,7 +2181,8 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.account_balance_wallet_outlined, size: isMobile ? 28 : 36, color: const Color(0xFF8B5CF6)),
+                child: Icon(Icons.account_balance_wallet_outlined,
+                    size: isMobile ? 28 : 36, color: const Color(0xFF8B5CF6)),
               ),
               const SizedBox(height: 12),
               Text(
@@ -1850,11 +2197,296 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               Text(
                 'Custom allowances (HRA, DA, Medical), PF deductions and gross CTC templates will be added here.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: isDark ? Colors.white60 : const Color(0xFF64748B), fontSize: isMobile ? 11 : 12),
+                style: TextStyle(
+                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                    fontSize: isMobile ? 11 : 12),
               ),
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  // ================= TAB 5: LOGIN ACCOUNT CREATION (OPTIONAL) =================
+  Widget _buildLoginAccountTabContent(bool isDark, bool isMobile) {
+    final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSub = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : const Color(0xFFE2E8F0);
+    final boxBg = isDark ? Colors.white.withValues(alpha: 0.03) : const Color(
+        0xFFF8FAFC);
+
+    return _buildTabCardContainer(
+      title: 'ERP Login Account Creation',
+      subtitle: 'Setup employee ERP portal access, credentials, assigned role & account status (Optional)',
+      icon: Icons.vpn_key_outlined,
+      accentColor: const Color(0xFF06B6D4),
+      isDark: isDark,
+      isMobile: isMobile,
+      children: [
+        // Master Toggle Card (Allows creating account now or skipping for later)
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _enableLoginAccount
+                ? (isDark
+                ? const Color(0xFF064E3B).withValues(alpha: 0.25)
+                : const Color(0xFFECFDF5))
+                : boxBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _enableLoginAccount
+                  ? const Color(0xFF10B981)
+                  : (isDark ? Colors.white10 : Colors.black12),
+              width: _enableLoginAccount ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _enableLoginAccount
+                      ? const Color(0xFF059669)
+                      : (isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.vpn_key_rounded,
+                  color: _enableLoginAccount ? Colors.white : (isDark ? Colors
+                      .white60 : Colors.black54),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Create ERP Login Account for this Employee',
+                      style: TextStyle(
+                        color: titleColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Optional. When enabled, this employee will be able to log in to the ERP portal immediately.',
+                      style: TextStyle(color: textSub, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _enableLoginAccount,
+                activeColor: const Color(0xFF059669),
+                onChanged: (val) {
+                  setState(() {
+                    _enableLoginAccount = val;
+                    if (val && _loginEmailController.text.isEmpty &&
+                        _officialEmailController.text.isNotEmpty) {
+                      _loginEmailController.text =
+                          _officialEmailController.text.trim();
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        if (_enableLoginAccount) ...[
+          // Row 1: Login Email / Username & Initial Password
+          _buildResponsiveRow(
+            isMobile: isMobile,
+            first: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLabel('Login Email / Username *', isDark),
+                TextFormField(
+                  controller: _loginEmailController,
+                  decoration: _inputDecoration(
+                      'e.g. employee@company.com', Icons.email_outlined,
+                      isDark),
+                  style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 13),
+                  validator: (val) {
+                    if (!_enableLoginAccount) return null;
+                    if (val == null || val
+                        .trim()
+                        .isEmpty) return 'Login Email/Username is required';
+                    if (!val.contains('@') || !val.contains('.'))
+                      return 'Please enter a valid email address';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+            second: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLabel('Initial Password *', isDark),
+                TextFormField(
+                  controller: _loginPasswordController,
+                  obscureText: _obscureLoginPassword,
+                  decoration: _inputDecoration(
+                      'Enter minimum 6 characters', Icons.lock_outline, isDark)
+                      .copyWith(
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureLoginPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                        size: 18,
+                      ),
+                      onPressed: () =>
+                          setState(() =>
+                      _obscureLoginPassword = !_obscureLoginPassword),
+                    ),
+                  ),
+                  style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 13),
+                  validator: (val) {
+                    if (!_enableLoginAccount) return null;
+                    if (val == null || val
+                        .trim()
+                        .isEmpty) return 'Initial password is required';
+                    if (val
+                        .trim()
+                        .length < 6)
+                      return 'Password must be at least 6 characters';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // Account Status
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildLabel('Account Status *', isDark),
+              DropdownButtonFormField<String>(
+                value: _selectedLoginStatus,
+                decoration: _inputDecoration(
+                    'Select Status', Icons.toggle_on_outlined, isDark),
+                dropdownColor: isDark ? const Color(0xFF0F172A) : Colors
+                    .white,
+                style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13),
+                items: const [
+                  DropdownMenuItem(value: 'Active',
+                      child: Text('Active (Can login immediately)')),
+                  DropdownMenuItem(value: 'Frozen',
+                      child: Text('Frozen (Temporary hold)')),
+                  DropdownMenuItem(value: 'Banned',
+                      child: Text('Banned (Access blocked)')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _selectedLoginStatus = val);
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF06B6D4).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: const Color(0xFF06B6D4).withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: Color(0xFF06B6D4),
+                    size: 16),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'This login account will be automatically linked to this employee profile upon completion.',
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : const Color(0xFF0F766E),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else
+          ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 26),
+              decoration: BoxDecoration(
+                color: boxBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.person_outline_rounded,
+                    size: 38,
+                    color: isDark ? Colors.white30 : Colors.black26,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No ERP Login Account Configured',
+                    style: TextStyle(
+                      color: titleColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Login account creation is optional during onboarding. You can onboard this employee now and create their login account anytime later from their Employee Profile under "System Login & Account Status".',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: textSub, fontSize: 12),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _enableLoginAccount = true;
+                        if (_loginEmailController.text.isEmpty &&
+                            _officialEmailController.text.isNotEmpty) {
+                          _loginEmailController.text = _officialEmailController
+                              .text.trim();
+                        }
+                      });
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 15),
+                    label: const Text('Enable Login Account Now',
+                        style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF059669),
+                      side: const BorderSide(color: Color(0xFF059669)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
       ],
     );
   }
@@ -1864,10 +2496,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     String prevLabel = 'Previous';
     if (!isMobile) {
       prevLabel = _activeTabIndex == 1
-          ? 'Previous: Employee Details'
+          ? 'Previous: Personal Details'
           : _activeTabIndex == 2
-              ? 'Previous: Company Details'
-              : 'Previous: Leaves & Deductions';
+          ? 'Previous: Company Details'
+          : _activeTabIndex == 3
+          ? 'Previous: Leaves & Deductions'
+          : 'Previous: Salary Template';
     }
 
     String nextLabel = 'Next';
@@ -1875,8 +2509,12 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       nextLabel = _activeTabIndex == 0
           ? 'Next: Company Details'
           : _activeTabIndex == 1
-              ? 'Next: Leaves & Deductions'
-              : 'Next: Salary Template';
+          ? 'Next: Leaves & Deductions'
+          : _activeTabIndex == 2
+          ? 'Next: Salary Template'
+          : _activeTabIndex == 3
+          ? 'Next: Login Account'
+          : 'Complete Onboarding';
     }
 
     return Row(
@@ -1887,53 +2525,73 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
           OutlinedButton.icon(
             onPressed: () => setState(() => _activeTabIndex--),
             style: OutlinedButton.styleFrom(
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: isMobile ? 10 : 13),
-              side: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade400),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 12 : 20, vertical: isMobile ? 10 : 13),
+              side: BorderSide(
+                  color: isDark ? Colors.white24 : Colors.grey.shade400),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             icon: const Icon(Icons.arrow_back, size: 15),
             label: Text(
               prevLabel,
-              style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: isMobile ? 12 : 13),
+              style: TextStyle(color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: isMobile ? 12 : 13),
             ),
           )
         else
           OutlinedButton(
             onPressed: () => Navigator.pop(context),
             style: OutlinedButton.styleFrom(
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: isMobile ? 10 : 13),
-              side: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade400),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 12 : 20, vertical: isMobile ? 10 : 13),
+              side: BorderSide(
+                  color: isDark ? Colors.white24 : Colors.grey.shade400),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: Text(
               isMobile ? 'Discard' : 'Cancel & Discard',
-              style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: isMobile ? 12 : 13),
+              style: TextStyle(color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: isMobile ? 12 : 13),
             ),
           ),
 
-        // Right Action Button (4 Steps total: 0, 1, 2, 3)
-        if (_activeTabIndex < 3)
+        // Right Action Button (5 Steps total: 0, 1, 2, 3, 4)
+        if (_activeTabIndex < 4)
           ElevatedButton.icon(
             onPressed: () {
               if (_activeTabIndex == 0) {
-                // Step 0 is now Employee Details -> Validate Full Name
-                if (_fullNameController.text.trim().isEmpty) {
+                // Step 0 is Personal Details -> Validate Full Name
+                if (_fullNameController.text
+                    .trim()
+                    .isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter Full Name before proceeding!'), backgroundColor: Colors.orangeAccent),
+                    const SnackBar(content: Text(
+                        'Please enter Full Name before proceeding!'),
+                        backgroundColor: Colors.orangeAccent),
                   );
                   return;
                 }
               } else if (_activeTabIndex == 1) {
-                // Step 1 is now Company Details -> Validate Emp Code & Designation
-                if (_empCodeController.text.trim().isEmpty) {
+                // Step 1 is Company Details -> Validate Emp Code & Designation
+                if (_empCodeController.text
+                    .trim()
+                    .isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter Employee Code before proceeding!'), backgroundColor: Colors.orangeAccent),
+                    const SnackBar(content: Text(
+                        'Please enter Employee Code before proceeding!'),
+                        backgroundColor: Colors.orangeAccent),
                   );
                   return;
                 }
-                if (_designationController.text.trim().isEmpty) {
+                if (_designationController.text
+                    .trim()
+                    .isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter Designation before proceeding!'), backgroundColor: Colors.orangeAccent),
+                    const SnackBar(content: Text(
+                        'Please enter Designation before proceeding!'),
+                        backgroundColor: Colors.orangeAccent),
                   );
                   return;
                 }
@@ -1943,14 +2601,17 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: isMobile ? 10 : 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 16 : 24, vertical: isMobile ? 10 : 13),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               elevation: 2,
             ),
             icon: const Icon(Icons.arrow_forward, size: 15),
             label: Text(
               nextLabel,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 12 : 13),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: isMobile ? 12 : 13),
             ),
           )
         else
@@ -1959,21 +2620,30 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF059669),
               foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 28, vertical: isMobile ? 10 : 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 16 : 28, vertical: isMobile ? 10 : 13),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               elevation: 3,
             ),
             icon: _isSaving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                ? const SizedBox(width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.check_circle, size: 16),
             label: Text(
-              _isSaving ? 'Saving...' : (isMobile ? 'Complete' : 'Save & Complete Onboarding'),
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isMobile ? 12.5 : 14),
+              _isSaving ? 'Saving...' : (isMobile
+                  ? 'Complete'
+                  : 'Save & Complete Onboarding'),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: isMobile ? 12.5 : 14),
             ),
           ),
       ],
     );
   }
+
 
   Widget _buildQuickCalcButton(String label, VoidCallback onTap, bool isDark) {
     return InkWell(
@@ -1984,25 +2654,31 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.3)),
+          border: Border.all(
+              color: const Color(0xFF3B82F6).withValues(alpha: 0.3)),
         ),
         child: Text(
           label,
-          style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 11, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Color(0xFF3B82F6),
+              fontSize: 11,
+              fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 
-  Widget _buildPreviewRow(String title, String value, bool isDark, {bool isDeduction = false}) {
+  Widget _buildPreviewRow(String title, String value, bool isDark,
+      {bool isDeduction = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 12.5)),
+        Text(title, style: TextStyle(
+            color: isDark ? Colors.white60 : Colors.black54, fontSize: 12.5)),
         Text(
           value,
           style: TextStyle(
-            color: isDeduction ? const Color(0xFFEF4444) : (isDark ? Colors.white : Colors.black87),
+            color: isDeduction ? const Color(0xFFEF4444) : (isDark ? Colors
+                .white : Colors.black87),
             fontWeight: FontWeight.bold,
             fontSize: 12.5,
           ),
@@ -2064,13 +2740,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       ),
       prefixIcon: icon != null
           ? Icon(
-              icon,
-              color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
-              size: 18,
-            )
+        icon,
+        color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+        size: 18,
+      )
           : null,
       filled: true,
-      fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
+      fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(
+          0xFFF8FAFC),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),

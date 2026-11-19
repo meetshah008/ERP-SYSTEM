@@ -48,7 +48,13 @@ exports.addEmployee = async (req, res) => {
       leave_balance_sick,
       leave_balance_paid,
       unpaid_leave_limit,
-      unpaid_leave_per_day_deduction
+      unpaid_leave_per_day_deduction,
+      // Optional Login Account Fields for Step 5
+      create_login,
+      login_email,
+      login_password,
+      login_role,
+      login_status
     } = req.body;
 
     if (!emp_code || !full_name || !department_id) {
@@ -56,6 +62,31 @@ exports.addEmployee = async (req, res) => {
         success: false,
         message: 'Employee Code, Full Name, and Department are required.'
       });
+    }
+
+    // Validate login details if login account requested
+    const wantLogin = Boolean(create_login || (login_email && login_password));
+    const targetLoginEmail = (login_email || email || '').trim();
+    if (wantLogin) {
+      if (!targetLoginEmail) {
+        return res.status(400).json({
+          success: false,
+          message: 'Login Email is required when creating a login account.'
+        });
+      }
+      if (!login_password || login_password.trim().length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Initial password must be at least 6 characters long.'
+        });
+      }
+      const [existingUser] = await db.query('SELECT user_id FROM USER WHERE email = ?', [targetLoginEmail]);
+      if (existingUser.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'This login email is already in use by another user account.'
+        });
+      }
     }
 
     // Auto ensure columns exist in EMPLOYEE table
@@ -159,10 +190,53 @@ exports.addEmployee = async (req, res) => {
       ]
     );
 
+    const newEmpId = result.insertId;
+    let newUserId = null;
+
+    if (wantLogin) {
+      try {
+        const bcrypt = require('bcryptjs');
+        const passwordHash = await bcrypt.hash(login_password.trim(), 10);
+        const targetRole = login_role || role || 'Employee';
+
+        let [roleRows] = await db.query(
+          'SELECT role_id FROM ROLE WHERE company_id = ? AND name = ? LIMIT 1',
+          [effCompanyId, targetRole]
+        );
+        if (roleRows.length === 0) {
+          [roleRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [targetRole]);
+        }
+        let roleId = roleRows.length > 0 ? roleRows[0].role_id : null;
+        if (!roleId) {
+          const [newRole] = await db.query('INSERT INTO ROLE (company_id, name) VALUES (?, ?)', [effCompanyId, targetRole]);
+          roleId = newRole.insertId;
+        }
+
+        const isUserActive = (login_status === 'Active' || login_status === true || login_status === 1 || !login_status) ? 1 : 0;
+
+        const [userResult] = await db.query(
+          `INSERT INTO USER (company_id, role_id, email, password_hash, is_active)
+           VALUES (?, ?, ?, ?, ?)`,
+          [effCompanyId, roleId, targetLoginEmail, passwordHash, isUserActive]
+        );
+        newUserId = userResult.insertId;
+
+        await db.query(
+          'UPDATE EMPLOYEE SET user_id = ?, email = COALESCE(email, ?), role = ? WHERE employee_id = ?',
+          [newUserId, targetLoginEmail, targetRole, newEmpId]
+        );
+      } catch (loginErr) {
+        console.error('Failed to create login account during onboarding:', loginErr);
+      }
+    }
+
     return res.status(201).json({
       success: true,
-      message: 'Employee successfully onboarded!',
-      employee_id: result.insertId
+      message: wantLogin && newUserId
+        ? 'Employee onboarded and ERP login account created successfully!'
+        : 'Employee successfully onboarded!',
+      employee_id: newEmpId,
+      user_id: newUserId
     });
 
   } catch (error) {
@@ -1190,10 +1264,11 @@ exports.deleteLeave = async (req, res) => {
 exports.updateEmployeeStatus = async (req, res) => {
     try {
       const { id } = req.params;
-      const { status, exit_reason } = req.body; // status: 'active', 'suspended', 'terminated'
+      let { status, exit_reason } = req.body; // status: 'active', 'suspended', 'frozen', 'banned', 'terminated'
+      status = (status || '').toLowerCase().trim();
 
-      if (!['active', 'suspended', 'terminated'].includes(status)) {
-        return res.status(400).json({ success: false, message: 'Status must be active, suspended, or terminated.' });
+      if (!['active', 'suspended', 'frozen', 'banned', 'terminated'].includes(status)) {
+        return res.status(400).json({ success: false, message: 'Status must be active, suspended, frozen, banned, or terminated.' });
       }
 
       // A. Check employee
@@ -1210,10 +1285,10 @@ exports.updateEmployeeStatus = async (req, res) => {
           'UPDATE EMPLOYEE SET status = ?, exit_date = CURDATE(), exit_reason = ? WHERE employee_id = ?',
           [status, exit_reason || 'Employment Terminated by Super Admin', id]
         );
-      } else if (status === 'suspended') {
+      } else if (status === 'suspended' || status === 'frozen' || status === 'banned') {
         await db.query(
           'UPDATE EMPLOYEE SET status = ?, exit_reason = ? WHERE employee_id = ?',
-          [status, exit_reason || 'System Access Suspended/Banned', id]
+          [status, exit_reason || `System Access ${status.toUpperCase()}`, id]
         );
       } else {
         // Re-activating employee
@@ -1226,7 +1301,7 @@ exports.updateEmployeeStatus = async (req, res) => {
       // C. AGAR SYSTEM LOGIN HAI TO ACCESS FREEZE / UNFREEZE KARNA
       if (emp.user_id) {
         const isUserActive = status === 'active';
-        await db.query('UPDATE USER SET is_active = ? WHERE user_id = ?', [isUserActive, emp.user_id]);
+        await db.query('UPDATE USER SET is_active = ? WHERE user_id = ?', [isUserActive ? 1 : 0, emp.user_id]);
       }
 
       return res.status(200).json({
@@ -1711,7 +1786,7 @@ exports.updateEmployeeStatus = async (req, res) => {
   exports.updateEmployeePermissions = async (req, res) => {
     try {
       const { id } = req.params;
-      const { permissions, role_id, user_active } = req.body;
+      const { permissions, role_id, role_name, user_active } = req.body;
 
       if (!id) {
         return res.status(400).json({ success: false, message: 'Employee ID is required.' });
@@ -1740,13 +1815,20 @@ exports.updateEmployeeStatus = async (req, res) => {
       }
 
       // Update user role and status if employee has user_id
-      const [emp] = await db.query('SELECT user_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
+      const [emp] = await db.query('SELECT user_id, company_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
       if (emp.length > 0 && emp[0].user_id) {
         const updates = [];
         const params = [];
-        if (role_id) {
+        let targetRoleId = role_id;
+        if (!targetRoleId && role_name) {
+          const compId = emp[0].company_id || resolveCompanyId(req) || 1;
+          let [rRows] = await db.query('SELECT role_id FROM ROLE WHERE company_id = ? AND name = ? LIMIT 1', [compId, role_name]);
+          if (rRows.length === 0) [rRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [role_name]);
+          if (rRows.length > 0) targetRoleId = rRows[0].role_id;
+        }
+        if (targetRoleId) {
           updates.push('role_id = ?');
-          params.push(role_id);
+          params.push(targetRoleId);
         }
         if (user_active !== undefined) {
           updates.push('is_active = ?');
@@ -1755,6 +1837,9 @@ exports.updateEmployeeStatus = async (req, res) => {
         if (updates.length > 0) {
           params.push(emp[0].user_id);
           await db.query(`UPDATE USER SET ${updates.join(', ')} WHERE user_id = ?`, params);
+        }
+        if (role_name) {
+          await db.query('UPDATE EMPLOYEE SET role = ? WHERE employee_id = ?', [role_name, id]);
         }
       }
 
@@ -1882,10 +1967,14 @@ exports.updateEmployeeStatus = async (req, res) => {
   exports.createEmployeeLoginAccount = async (req, res) => {
     try {
       const { id } = req.params;
-      const { email, password, role_name } = req.body;
+      const { email, password, role_name, status } = req.body;
 
       if (!email || !password) {
         return res.status(400).json({ success: false, message: 'Email and password are required.' });
+      }
+
+      if (password.trim().length < 6) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
       }
 
       // A. Check if email already in use
@@ -1895,40 +1984,114 @@ exports.updateEmployeeStatus = async (req, res) => {
       }
 
       // B. Check Employee exists
-      const [empRows] = await db.query('SELECT employee_id, branch_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
+      const [empRows] = await db.query(
+        'SELECT employee_id, company_id, branch_id, user_id, full_name, email FROM EMPLOYEE WHERE employee_id = ?',
+        [id]
+      );
       if (empRows.length === 0) {
         return res.status(404).json({ success: false, message: 'Employee not found.' });
       }
+      const emp = empRows[0];
+
+      if (emp.user_id) {
+        return res.status(400).json({ success: false, message: 'This employee already has a linked login account.' });
+      }
 
       // C. Find role_id
-      let roleId = 3; // Default Employee
-      const [roleRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [role_name || 'Employee']);
-      if (roleRows.length > 0) {
-        roleId = roleRows[0].role_id;
+      const targetRoleName = role_name || 'Employee';
+      const userCompanyId = emp.company_id || resolveCompanyId(req) || 1;
+      let [roleRows] = await db.query(
+        'SELECT role_id FROM ROLE WHERE company_id = ? AND name = ? LIMIT 1',
+        [userCompanyId, targetRoleName]
+      );
+      if (roleRows.length === 0) {
+        [roleRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [targetRoleName]);
+      }
+      let roleId = roleRows.length > 0 ? roleRows[0].role_id : null;
+      if (!roleId) {
+        const [newRole] = await db.query('INSERT INTO ROLE (company_id, name) VALUES (?, ?)', [userCompanyId, targetRoleName]);
+        roleId = newRole.insertId;
       }
 
       // D. Hash password & insert into USER
       const bcrypt = require('bcryptjs');
       const passwordHash = await bcrypt.hash(password.trim(), 10);
-      const userCompanyId = emp.company_id || resolveCompanyId(req) || 1;
+      const isUserActive = (status === undefined || status === null)
+        ? 1
+        : (['active', 'true', '1'].includes(status.toString().toLowerCase()) ? 1 : 0);
 
       const [userResult] = await db.query(
         `INSERT INTO USER (company_id, role_id, email, password_hash, is_active)
-         VALUES (?, ?, ?, ?, 1)`,
-        [userCompanyId, roleId, email.trim(), passwordHash]
+         VALUES (?, ?, ?, ?, ?)`,
+        [userCompanyId, roleId, email.trim(), passwordHash, isUserActive]
       );
       const newUserId = userResult.insertId;
 
-      // E. Link user_id to EMPLOYEE
-      await db.query('UPDATE EMPLOYEE SET user_id = ? WHERE employee_id = ?', [newUserId, id]);
+      // E. Link user_id to EMPLOYEE and sync role and email
+      await db.query(
+        'UPDATE EMPLOYEE SET user_id = ?, role = ?, email = COALESCE(email, ?) WHERE employee_id = ?',
+        [newUserId, targetRoleName, email.trim(), id]
+      );
 
       return res.status(201).json({
         success: true,
         message: 'System login account created and linked successfully!',
-        data: { user_id: newUserId, email: email.trim(), role_name: role_name || 'Employee' }
+        data: {
+          user_id: newUserId,
+          email: email.trim(),
+          role_name: targetRoleName,
+          is_active: isUserActive
+        }
       });
     } catch (error) {
       console.error('Create Employee Login Error:', error);
+      return res.status(500).json({ success: false, message: 'Database error', error: error.message });
+    }
+  };
+
+  // 13B. RESET EMPLOYEE LOGIN PASSWORD
+  exports.resetEmployeePassword = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { new_password, password } = req.body;
+      const targetPassword = new_password || password;
+
+      if (!targetPassword || targetPassword.trim().length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password must be at least 6 characters long.'
+        });
+      }
+
+      // Check Employee exists & has user_id
+      const [empRows] = await db.query(
+        'SELECT employee_id, user_id, full_name, email FROM EMPLOYEE WHERE employee_id = ?',
+        [id]
+      );
+      if (empRows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Employee not found.' });
+      }
+      const emp = empRows[0];
+
+      if (!emp.user_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'This employee does not have a linked login account.'
+        });
+      }
+
+      // Hash password & update USER
+      const bcrypt = require('bcryptjs');
+      const passwordHash = await bcrypt.hash(targetPassword.trim(), 10);
+
+      await db.query('UPDATE USER SET password_hash = ? WHERE user_id = ?', [passwordHash, emp.user_id]);
+
+      return res.status(200).json({
+        success: true,
+        message: `Password for ${emp.full_name} has been reset successfully!`
+      });
+    } catch (error) {
+      console.error('Reset Employee Password Error:', error);
       return res.status(500).json({ success: false, message: 'Database error', error: error.message });
     }
   };

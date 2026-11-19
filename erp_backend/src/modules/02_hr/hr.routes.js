@@ -51,6 +51,8 @@ router.get('/employees/:id/full-profile', hrController.getEmployeeFullProfile);
 router.put('/employees/:id/permissions', hrController.updateEmployeePermissions);
 router.put('/employees/:id/lifecycle', hrController.updateEmployeeLifecycle);
 router.post('/employees/:id/create-login', hrController.createEmployeeLoginAccount);
+router.post('/employees/:id/reset-password', hrController.resetEmployeePassword);
+router.put('/employees/:id/reset-password', hrController.resetEmployeePassword);
 
 // Notification Routes
 router.get('/notifications', hrController.getNotifications);
