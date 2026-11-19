@@ -1910,11 +1910,12 @@ exports.updateEmployeeStatus = async (req, res) => {
       // D. Hash password & insert into USER
       const bcrypt = require('bcryptjs');
       const passwordHash = await bcrypt.hash(password.trim(), 10);
+      const userCompanyId = emp.company_id || resolveCompanyId(req) || 1;
 
       const [userResult] = await db.query(
         `INSERT INTO USER (company_id, role_id, email, password_hash, is_active)
-         VALUES (1, ?, ?, ?, 1)`,
-        [roleId, email.trim(), passwordHash]
+         VALUES (?, ?, ?, ?, 1)`,
+        [userCompanyId, roleId, email.trim(), passwordHash]
       );
       const newUserId = userResult.insertId;
 
