@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'mobile_ui.dart';
 
-/// A network image that fades in when loaded and quietly falls back to a
-/// branded gradient when the device is offline or the URL fails.
+/// An image that supports both local assets (assets/images/...) and remote URLs,
+/// fading in smoothly and quietly falling back to a branded gradient on error.
 class MobileNetworkImage extends StatelessWidget {
   final String url;
   final BoxFit fit;
@@ -20,6 +20,17 @@ class MobileNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (url.startsWith('assets/')) {
+      return Image.asset(
+        url,
+        fit: fit,
+        width: double.infinity,
+        height: double.infinity,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, __, ___) =>
+            _FallbackSurface(accent: accent, icon: fallbackIcon),
+      );
+    }
     return Image.network(
       url,
       fit: fit,

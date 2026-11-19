@@ -1818,8 +1818,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_hasPermission('tasks_view')) {
       slides.add(
         MobileHeroSlide(
-          imageUrl:
-           'https://thedigitalprojectmanager.com/cdn-cgi/image/format=auto,quality=82,onerror=redirect/wp-content/uploads/2024/03/DPM-what-is-a-project-featured-image.png',
+          imageUrl: 'assets/images/projects_tasks.png',
           eyebrow: 'Live delivery',
           title: 'Projects in motion',
           subtitle:
@@ -1854,8 +1853,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_hasPermission('manufacturing_view_bom')) {
       slides.add(
         MobileHeroSlide(
-          imageUrl:
-              'https://www.mygreatlearning.com/blog/wp-content/uploads/2021/12/iStock-1189916627.jpg',
+          imageUrl: 'assets/images/manufacturing_robot.jpg',
           eyebrow: 'Shop floor',
           title: 'Production never sleeps',
           subtitle:
@@ -1873,8 +1871,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_hasPermission('inventory_view_stock')) {
       slides.add(
         MobileHeroSlide(
-          imageUrl:
-              'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQI3OUolmZhaa9euJ0n-se8rGE_A_de1SpyS317LjbWdgOz2q8rlgGdgwp9&s=10',
+          imageUrl: 'assets/images/inventory_warehouse.jpg',
           eyebrow: 'Stock health',
           title: 'Warehouse at a glance',
           subtitle:
@@ -1891,8 +1888,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_hasPermission('finance_view_reports')) {
       slides.add(
         MobileHeroSlide(
-          imageUrl:
-              'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=800&q=80',
+          imageUrl: 'assets/images/finance_accounting.jpg',
           eyebrow: 'Money flow',
           title: 'Spend with confidence',
           subtitle:
