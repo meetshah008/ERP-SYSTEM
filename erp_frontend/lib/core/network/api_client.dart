@@ -73,7 +73,18 @@ class ApiClient {
 
   static List<String> get _candidateHosts {
     if (_prodEnvUrl.isNotEmpty) {
-      return [_prodEnvUrl, 'https://erp-system-ggdk.onrender.com', 'http://localhost:5000', _currentHost];
+      return [_prodEnvUrl, 'https://erp-system-ggdk.onrender.com'];
+    }
+    if (kIsWeb) {
+      if (kDebugMode) {
+        return [
+          'http://localhost:5000',
+          'https://erp-system-ggdk.onrender.com',
+        ];
+      }
+      return [
+        'https://erp-system-ggdk.onrender.com',
+      ];
     }
     if (kDebugMode) {
       return [
@@ -86,8 +97,6 @@ class ApiClient {
     }
     return [
       'https://erp-system-ggdk.onrender.com',
-      'http://127.0.0.1:5000',
-      'http://localhost:5000',
     ];
   }
 
@@ -105,7 +114,7 @@ class ApiClient {
           Uri.parse('$host/api/auth/register-company'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(data),
-        ).timeout(const Duration(milliseconds: 2500));
+        ).timeout(const Duration(seconds: 15)); // Render cold start needs generous timeout
 
         _currentHost = host;
         return jsonDecode(response.body);
@@ -130,7 +139,7 @@ class ApiClient {
           Uri.parse('$host/api/auth/login'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'email': email, 'password': password}),
-        ).timeout(const Duration(milliseconds: 2500));
+        ).timeout(const Duration(seconds: 15)); // Render cold start needs generous timeout
 
         _currentHost = host;
         return jsonDecode(response.body);

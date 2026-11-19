@@ -8413,7 +8413,7 @@ s=1
 break
 case 1:return A.E(q,r)}})
 return A.F($async$kB,r)},
-b2m(){return A.a(["https://erp-system-ggdk.onrender.com","http://127.0.0.1:5000","http://localhost:5000"],t.s)},
+b2m(){return A.a(["https://erp-system-ggdk.onrender.com"],t.s)},
 a7G(a){return A.bdp(a)},
 bdp(a){var s=0,r=A.G(t.a),q,p=2,o=[],n,m,l,k,j,i,h,g,f,e,d,c
 var $async$a7G=A.B(function(b,a0){if(b===1){o.push(a0)
@@ -125006,6 +125006,7 @@ B.R9=new A.b9(14e4)
 B.Ra=new A.b9(14e5)
 B.Rb=new A.b9(15e3)
 B.Rc=new A.b9(15e5)
+B.vH=new A.b9(15e6)
 B.jo=new A.b9(16e4)
 B.Rd=new A.b9(16667)
 B.eZ=new A.b9(167e3)
@@ -125018,7 +125019,6 @@ B.ly=new A.b9(2e6)
 B.Rh=new A.b9(22e4)
 B.Ri=new A.b9(225e3)
 B.lz=new A.b9(25e4)
-B.vH=new A.b9(25e5)
 B.oX=new A.b9(26e4)
 B.Rj=new A.b9(28e4)
 B.Rk=new A.b9(2961926e3)
