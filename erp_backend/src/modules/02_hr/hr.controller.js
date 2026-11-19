@@ -327,7 +327,7 @@ exports.getEmployeeStats = async (req, res) => {
   try {
     await ensureAdminEmployeeRecords().catch(err => console.warn('[Stats] ensureAdmin error:', err.message));
     const companyId = resolveCompanyId(req);
-    let sql = 'SELECT COUNT(*) as total FROM EMPLOYEE WHERE status = "active"';
+    let sql = "SELECT COUNT(*) as total FROM EMPLOYEE WHERE status = 'active'";
     const params = [];
     if (companyId) {
       sql += ' AND (company_id = ? OR branch_id IN (SELECT branch_id FROM BRANCH WHERE company_id = ?))';

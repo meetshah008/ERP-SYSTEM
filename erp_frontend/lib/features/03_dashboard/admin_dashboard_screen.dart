@@ -1835,8 +1835,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (_hasAnyHrAccess) {
       slides.add(
         MobileHeroSlide(
-          imageUrl:
-              'assets/images/team.jpg' ,
+          imageUrl: 'assets/images/team_people.jpg',
           eyebrow: 'People pulse',
           title: 'Your team, connected',
           subtitle:

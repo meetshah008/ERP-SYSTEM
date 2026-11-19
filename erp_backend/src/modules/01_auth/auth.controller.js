@@ -62,20 +62,14 @@ exports.registerCompany = async (req, res) => {
       [companyId, first_branch_name || 'Main Headquarter', 'Default Location']
     );
 
-    // E2. Create Default Department
-    const [deptResult] = await connection.query(
-      'INSERT INTO DEPARTMENT (company_id, name) VALUES (?, ?)',
-      [companyId, 'Executive Management']
-    );
-
-    // F. Create Initial Employee Record for Super Admin
+    // F. Create Initial Employee Record for Super Admin (department is NULL by default so Departments count is 0)
     try {
       const adminDisplayName = admin_name && admin_name.trim() ? admin_name.trim() : (admin_email.split('@')[0]);
       const cleanName = adminDisplayName.charAt(0).toUpperCase() + adminDisplayName.slice(1);
       await connection.query(
         `INSERT INTO EMPLOYEE (company_id, user_id, branch_id, department_id, emp_code, full_name, designation, role, email, status, join_date, employment_type)
-         VALUES (?, ?, ?, ?, 'ADM-001', ?, 'System Administrator', 'Super Admin', ?, 'active', CURDATE(), 'Permanent')`,
-        [companyId, userResult.insertId, branchResult.insertId || 1, deptResult.insertId || null, cleanName, admin_email]
+         VALUES (?, ?, ?, NULL, 'ADM-001', ?, 'System Administrator', 'Super Admin', ?, 'active', CURDATE(), 'Permanent')`,
+        [companyId, userResult.insertId, branchResult.insertId || 1, cleanName, admin_email]
       );
     } catch (empErr) {
       console.error('Error creating super admin employee:', empErr.message);
