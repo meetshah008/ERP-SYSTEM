@@ -9,6 +9,8 @@ import '../../core/widgets/botanical_background.dart';
 class TaskFormScreen extends StatefulWidget {
   final Map<String, dynamic>? task;
   final int? preselectedProjectId;
+  final Map<String, dynamic>? preselectedProject;
+  final Map<String, dynamic>? projectDetails;
   final List<dynamic> projects;
   final List<dynamic> employees;
   final VoidCallback? onTaskSaved;
@@ -17,6 +19,8 @@ class TaskFormScreen extends StatefulWidget {
     super.key,
     this.task,
     this.preselectedProjectId,
+    this.preselectedProject,
+    this.projectDetails,
     this.projects = const [],
     this.employees = const [],
     this.onTaskSaved,
@@ -50,6 +54,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   List<dynamic> _departments = [];
   bool _isLoadingDepts = true;
 
+  List<dynamic> _availableWorkers = [];
+  bool _isLoadingProjectMembers = false;
+
   bool get isEdit => widget.task != null;
 
   @override
@@ -62,7 +69,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _hoursCtrl = TextEditingController(text: (t?['estimated_hours'] ?? 8.0).toString());
     _tagsCtrl = TextEditingController(text: t?['tags'] ?? '');
 
-    _selectedProjectId = t != null ? t['project_id'] : widget.preselectedProjectId;
+    _selectedProjectId = t != null
+        ? (int.tryParse(t['project_id']?.toString() ?? '') ?? widget.preselectedProjectId)
+        : widget.preselectedProjectId;
 
     // Multi-worker assignment initialization
     if (t != null) {
@@ -78,10 +87,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         final id = int.tryParse(t['assigned_to'].toString());
         if (id != null) _selectedAssigneeIds.add(id);
       }
-    } else if (widget.employees.isNotEmpty) {
-      final id = int.tryParse(widget.employees[0]['employee_id'].toString());
-      if (id != null) _selectedAssigneeIds.add(id);
     }
+
+    _availableWorkers = List.from(widget.employees);
 
     if (t != null && t['priority'] != null) {
       final p = t['priority'].toString().toUpperCase();
@@ -115,7 +123,174 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       _subtaskCtrls.add(TextEditingController());
     }
 
-    _fetchDepartments();
+    _initFormContext();
+  }
+
+  Future<void> _initFormContext() async {
+    await _fetchDepartments();
+    await _loadProjectContext(_selectedProjectId, isInitial: true);
+  }
+
+  Future<void> _loadProjectContext(int? projectId, {bool isInitial = false}) async {
+    if (projectId == null) {
+      List<dynamic> workers = List.from(widget.employees);
+      if (_selectedDeptId != null) {
+        final deptWorkers = widget.employees.where((e) {
+          final dId = int.tryParse(e['department_id']?.toString() ?? '');
+          return dId == _selectedDeptId;
+        }).toList();
+        if (deptWorkers.isNotEmpty) {
+          workers = deptWorkers;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _availableWorkers = workers;
+          if (_departments.isNotEmpty && _selectedDeptId == null) {
+            _selectedDeptId = _departments[0]['department_id'];
+          }
+          _ensureValidAssignees();
+        });
+      }
+      return;
+    }
+
+    if (mounted) setState(() => _isLoadingProjectMembers = true);
+
+    try {
+      Map<String, dynamic>? prj;
+      for (final p in widget.projects) {
+        if ((int.tryParse(p['project_id']?.toString() ?? '') ?? 0) == projectId) {
+          prj = p;
+          break;
+        }
+      }
+      prj ??= widget.preselectedProject;
+
+      Map<String, dynamic>? details;
+      if (widget.projectDetails != null && (int.tryParse(widget.projectDetails!['project_id']?.toString() ?? '') ?? 0) == projectId) {
+        details = widget.projectDetails;
+      } else {
+        final res = await ApiClient.get(Uri.parse('$_apiHost/api/projects/$projectId'));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data['success'] == true && data['data'] != null) {
+            details = data['data'];
+          }
+        }
+      }
+
+      final prjDeptId = int.tryParse(details?['department_id']?.toString() ?? prj?['department_id']?.toString() ?? '');
+      int? matchedDeptId;
+      if (prjDeptId != null) {
+        for (final d in _departments) {
+          if ((int.tryParse(d['department_id']?.toString() ?? '') ?? 0) == prjDeptId) {
+            matchedDeptId = prjDeptId;
+            break;
+          }
+        }
+      }
+
+      final List<dynamic> projectWorkers = [];
+      final Set<int> addedIds = {};
+
+      final leaderId = int.tryParse(details?['project_leader_id']?.toString() ?? prj?['project_leader_id']?.toString() ?? '');
+      if (leaderId != null && leaderId > 0) {
+        dynamic leaderEmp;
+        for (final e in widget.employees) {
+          if ((int.tryParse(e['employee_id']?.toString() ?? '') ?? 0) == leaderId) {
+            leaderEmp = e;
+            break;
+          }
+        }
+        leaderEmp ??= {
+          'employee_id': leaderId,
+          'full_name': details?['leader_name'] ?? prj?['leader_name'] ?? 'Project Leader',
+          'emp_code': 'LEAD',
+        };
+        final item = Map<String, dynamic>.from(leaderEmp);
+        item['role_in_project'] = 'Lead';
+        projectWorkers.add(item);
+        addedIds.add(leaderId);
+      }
+
+      final membersList = (details?['members'] as List<dynamic>?) ?? [];
+      for (final m in membersList) {
+        final mId = int.tryParse(m['employee_id']?.toString() ?? '') ?? 0;
+        if (mId > 0 && !addedIds.contains(mId)) {
+          dynamic memberEmp;
+          for (final e in widget.employees) {
+            if ((int.tryParse(e['employee_id']?.toString() ?? '') ?? 0) == mId) {
+              memberEmp = e;
+              break;
+            }
+          }
+          memberEmp ??= m;
+          final item = Map<String, dynamic>.from(memberEmp);
+          if (m['role_in_project'] != null) {
+            item['role_in_project'] = m['role_in_project'];
+          }
+          projectWorkers.add(item);
+          addedIds.add(mId);
+        }
+      }
+
+      if (projectWorkers.isEmpty && prjDeptId != null) {
+        final deptEmployees = widget.employees.where((e) {
+          final dId = int.tryParse(e['department_id']?.toString() ?? '');
+          return dId == prjDeptId;
+        }).toList();
+        projectWorkers.addAll(deptEmployees);
+      }
+
+      if (projectWorkers.isEmpty) {
+        projectWorkers.addAll(widget.employees);
+      }
+
+      if (mounted) {
+        setState(() {
+          if (matchedDeptId != null) {
+            _selectedDeptId = matchedDeptId;
+          }
+          _availableWorkers = projectWorkers;
+          _isLoadingProjectMembers = false;
+          _ensureValidAssignees();
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _availableWorkers = widget.employees;
+          _isLoadingProjectMembers = false;
+          _ensureValidAssignees();
+        });
+      }
+    }
+  }
+
+  void _ensureValidAssignees() {
+    if (isEdit) {
+      if (_selectedAssigneeIds.isEmpty && _availableWorkers.isNotEmpty) {
+        final firstId = int.tryParse(_availableWorkers.first['employee_id']?.toString() ?? '');
+        if (firstId != null) _selectedAssigneeIds.add(firstId);
+      }
+      return;
+    }
+
+    final valid = _selectedAssigneeIds.where((id) {
+      return _availableWorkers.any((w) => (int.tryParse(w['employee_id']?.toString() ?? '') ?? 0) == id);
+    }).toList();
+
+    if (valid.isNotEmpty) {
+      _selectedAssigneeIds.clear();
+      _selectedAssigneeIds.addAll(valid);
+    } else if (_availableWorkers.isNotEmpty) {
+      _selectedAssigneeIds.clear();
+      final firstId = int.tryParse(_availableWorkers.first['employee_id']?.toString() ?? '');
+      if (firstId != null) _selectedAssigneeIds.add(firstId);
+    } else {
+      _selectedAssigneeIds.clear();
+    }
   }
 
   @override
@@ -686,7 +861,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 children: [
                                   _buildLabel('Department *', isDark),
                                   DropdownButtonFormField<int>(
-                                    value: _selectedDeptId,
+                                    value: (_departments.any((dept) => dept['department_id'] == _selectedDeptId))
+                                        ? _selectedDeptId
+                                        : null,
                                     isExpanded: true,
                                     dropdownColor: cardBg,
                                     style: TextStyle(color: textTitle, fontSize: 13.5),
@@ -701,28 +878,41 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                         ),
                                       );
                                     }).toList(),
-                                    onChanged: (val) => setState(() => _selectedDeptId = val),
+                                    onChanged: (val) {
+                                      setState(() => _selectedDeptId = val);
+                                      if (_selectedProjectId == null) {
+                                        _loadProjectContext(null);
+                                      }
+                                    },
                                   ),
                                 ],
                               ),
                               second: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildLabel('Project (Optional)', isDark),
+                                  _buildLabel(
+                                    widget.preselectedProjectId != null ? 'Project *' : 'Project (Optional)',
+                                    isDark,
+                                  ),
                                   DropdownButtonFormField<int?>(
-                                    value: _selectedProjectId,
+                                    value: (_selectedProjectId != null && widget.projects.any((p) => p['project_id'] == _selectedProjectId))
+                                        ? _selectedProjectId
+                                        : (widget.preselectedProjectId != null && widget.projects.any((p) => p['project_id'] == widget.preselectedProjectId)
+                                            ? widget.preselectedProjectId
+                                            : null),
                                     isExpanded: true,
                                     dropdownColor: cardBg,
                                     style: TextStyle(color: textTitle, fontSize: 13.5),
                                     decoration: _inputDecoration('Project', Icons.folder_open_outlined, isDark),
                                     items: [
-                                      const DropdownMenuItem<int?>(
-                                        value: null,
-                                        child: Text(
-                                          'None (General Task / No Project)',
-                                          style: TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                                      if (widget.preselectedProjectId == null)
+                                        const DropdownMenuItem<int?>(
+                                          value: null,
+                                          child: Text(
+                                            'None (General Task / No Project)',
+                                            style: TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                                          ),
                                         ),
-                                      ),
                                       ...widget.projects.map<DropdownMenuItem<int?>>((p) {
                                         return DropdownMenuItem<int?>(
                                           value: p['project_id'],
@@ -734,7 +924,10 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                         );
                                       }),
                                     ],
-                                    onChanged: (val) => setState(() => _selectedProjectId = val),
+                                    onChanged: (val) {
+                                      setState(() => _selectedProjectId = val);
+                                      _loadProjectContext(val);
+                                    },
                                   ),
                                 ],
                               ),
@@ -763,8 +956,28 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                   Row(
                                     children: [
                                       _buildLabel('Assigned Workers (${_selectedAssigneeIds.length}) *', isDark),
+                                      if (_selectedProjectId != null) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            'Project Team',
+                                            style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
                                       const Spacer(),
-                                      if (widget.employees.isNotEmpty)
+                                      if (_isLoadingProjectMembers)
+                                        const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF10B981)),
+                                        )
+                                      else if (_availableWorkers.isNotEmpty)
                                         PopupMenuButton<int>(
                                           tooltip: 'Add Worker',
                                           icon: Container(
@@ -789,7 +1002,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                             }
                                           },
                                           itemBuilder: (context) {
-                                            return widget.employees.map<PopupMenuItem<int>>((e) {
+                                            return _availableWorkers.map<PopupMenuItem<int>>((e) {
                                               final empId = int.tryParse(e['employee_id'].toString()) ?? 0;
                                               final isSelected = _selectedAssigneeIds.contains(empId);
                                               return PopupMenuItem<int>(
@@ -811,6 +1024,19 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                                         overflow: TextOverflow.ellipsis,
                                                       ),
                                                     ),
+                                                    if (e['role_in_project'] != null)
+                                                      Container(
+                                                        margin: const EdgeInsets.only(left: 6),
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                        ),
+                                                        child: Text(
+                                                          e['role_in_project'].toString(),
+                                                          style: const TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ),
                                                   ],
                                                 ),
                                               );
@@ -842,9 +1068,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                       spacing: 8,
                                       runSpacing: 8,
                                       children: _selectedAssigneeIds.map((empId) {
-                                        final emp = widget.employees.firstWhere(
+                                        final emp = _availableWorkers.firstWhere(
                                           (e) => (int.tryParse(e['employee_id'].toString()) ?? 0) == empId,
-                                          orElse: () => {'full_name': 'Worker #$empId', 'emp_code': 'EMP'},
+                                          orElse: () => widget.employees.firstWhere(
+                                            (e) => (int.tryParse(e['employee_id'].toString()) ?? 0) == empId,
+                                            orElse: () => {'full_name': 'Worker #$empId', 'emp_code': 'EMP'},
+                                          ),
                                         );
                                         final name = (emp['full_name'] ?? 'Worker').toString();
                                         return Container(

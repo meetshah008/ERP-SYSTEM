@@ -1156,11 +1156,14 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
 
   // ================= ✏️ EDIT TASK (DEDICATED FULL SCREEN) =================
   void _openEditTaskDialog(Map<String, dynamic> task) async {
+    final prjId = task['project_id'] != null ? int.tryParse(task['project_id'].toString()) : null;
     final res = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => TaskFormScreen(
           task: task,
+          preselectedProjectId: prjId,
+          projectDetails: (_selectedProject != null && _selectedProject!['project_id'] == prjId) ? _projectDetails : null,
           projects: _projects,
           employees: _employees,
           onTaskSaved: () {
@@ -1237,12 +1240,15 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   }
 
   // ================= 📝 CREATE TASK (DEDICATED FULL SCREEN) =================
-  void _openCreateTaskDialog({int? preselectedProjectId}) async {
+  void _openCreateTaskDialog({int? preselectedProjectId, Map<String, dynamic>? preselectedProject}) async {
+    final prj = preselectedProject ?? (_selectedProject != null && _selectedProject!['project_id'] == preselectedProjectId ? _selectedProject : null);
     final res = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => TaskFormScreen(
           preselectedProjectId: preselectedProjectId,
+          preselectedProject: prj,
+          projectDetails: (_selectedProject != null && _selectedProject!['project_id'] == preselectedProjectId) ? _projectDetails : null,
           projects: _projects,
           employees: _employees,
           onTaskSaved: () {
@@ -3378,7 +3384,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id']),
+              onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id'], preselectedProject: prj),
               icon: const Icon(Icons.add_rounded, size: 18),
               label: const Text('New Task', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
             ),
@@ -3468,7 +3474,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           elevation: 1,
                         ),
-                        onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id']),
+                        onPressed: () => _openCreateTaskDialog(preselectedProjectId: prj['project_id'], preselectedProject: prj),
                         icon: const Icon(Icons.add, size: 16),
                         label: Text(isMobile ? 'Task' : 'New Task', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ),

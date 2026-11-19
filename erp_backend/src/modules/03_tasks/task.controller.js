@@ -114,7 +114,7 @@ exports.createTask = async (req, res) => {
 // 2. SAARE TASKS KI LIST DEKHNA (Get All Tasks with Project name & Multi-Assignees)
 exports.getTasks = async (req, res) => {
   try {
-    const { employee_id, user_id, role } = req.query;
+    const { employee_id, user_id, role, project_id } = req.query;
     const userRole = role || req.user?.role || req.user?.role_name;
     const isSuperAdmin = userRole === 'Super Admin' || userRole === 'admin';
 
@@ -157,6 +157,11 @@ exports.getTasks = async (req, res) => {
       params.push(companyId, companyId);
     } else {
       whereConditions.push('1 = 0');
+    }
+
+    if (project_id) {
+      whereConditions.push('t.project_id = ?');
+      params.push(project_id);
     }
 
     // Agar filtering requested hai aur non-super-admin employee hai
