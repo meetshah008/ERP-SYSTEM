@@ -1837,7 +1837,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://img.magnific.com/premium-vector/team-success-celebration-high-five-teamwork-illustration_932695-5562.jpg?semt=ais_hybrid&w=740&q=80',
+              'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80',
           eyebrow: 'People pulse',
           title: 'Your team, connected',
           subtitle:
@@ -1892,7 +1892,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://storage.googleapis.com/joblist-content/hero-images/Accounting.png',
+              'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=800&q=80',
           eyebrow: 'Money flow',
           title: 'Spend with confidence',
           subtitle:
