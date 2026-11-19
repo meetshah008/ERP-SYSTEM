@@ -698,7 +698,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   title: Text(
-                    'App band karna chahte ho?',
+                    '	Do you want to close the app?',
                     style: TextStyle(
                       color: isDark ? Colors.white : const Color(0xFF18181B),
                       fontWeight: FontWeight.w700,
@@ -706,7 +706,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     ),
                   ),
                   content: Text(
-                    'ERP system se bahar jaoge.',
+                    'You will be logged out of the ERP system.',
                     style: TextStyle(
                       color: isDark ? Colors.white60 : Colors.black54,
                       fontSize: 14,
@@ -715,7 +715,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(ctx).pop(false),
-                      child: const Text('Ruko', style: TextStyle(color: Colors.grey)),
+                      child: const Text('Stay', style: TextStyle(color: Colors.grey)),
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
@@ -724,7 +724,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                       onPressed: () => Navigator.of(ctx).pop(true),
-                      child: const Text('Haan, bahar jao'),
+                      child: const Text('Yes, Exit'),
                     ),
                   ],
                 ),
@@ -1837,7 +1837,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQRjr3bgFV8-bUZNMUQX93gz9m639Xvigd2XvjiEc21pw&s=10',
+              'https://img.magnific.com/premium-vector/team-success-celebration-high-five-teamwork-illustration_932695-5562.jpg?semt=ais_hybrid&w=740&q=80',
           eyebrow: 'People pulse',
           title: 'Your team, connected',
           subtitle:
@@ -1855,7 +1855,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=1000&q=70',
+              'https://www.mygreatlearning.com/blog/wp-content/uploads/2021/12/iStock-1189916627.jpg',
           eyebrow: 'Shop floor',
           title: 'Production never sleeps',
           subtitle:
@@ -1874,7 +1874,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1000&q=70',
+              'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQI3OUolmZhaa9euJ0n-se8rGE_A_de1SpyS317LjbWdgOz2q8rlgGdgwp9&s=10',
           eyebrow: 'Stock health',
           title: 'Warehouse at a glance',
           subtitle:
@@ -1892,7 +1892,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1000&q=70',
+              'https://storage.googleapis.com/joblist-content/hero-images/Accounting.png',
           eyebrow: 'Money flow',
           title: 'Spend with confidence',
           subtitle:
