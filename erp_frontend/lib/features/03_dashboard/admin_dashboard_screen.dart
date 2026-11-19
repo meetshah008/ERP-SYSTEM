@@ -685,26 +685,79 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
         );
 
-        return Scaffold(
-          extendBody: !isDesktop,
-          backgroundColor: Colors.transparent,
-          body: isDesktop ? body : _buildTabBlurWrapper(body),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
 
-          // 📱 Expandable floating nav bar (MOBILE ONLY: !kIsWeb && screenWidth < 900)
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-          floatingActionButton: (isMobileDevice && !isKeyboardOpen)
-              ? ExpandableNavBar(
-            key: const ValueKey('expandable_nav_bar'),
-            currentIndex: _getBottomNavIndex(),
-            onItemSelected: _onBottomNavTapped,
-          )
-              : null,
+            // Agar dashboard tab par hain to exit confirm karo
+            if (_selectedMenu == 'Dashboard') {
+              final shouldExit = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  title: Text(
+                    'App band karna chahte ho?',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF18181B),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17,
+                    ),
+                  ),
+                  content: Text(
+                    'ERP system se bahar jaoge.',
+                    style: TextStyle(
+                      color: isDark ? Colors.white60 : Colors.black54,
+                      fontSize: 14,
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Ruko', style: TextStyle(color: Colors.grey)),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A34A),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('Haan, bahar jao'),
+                    ),
+                  ],
+                ),
+              );
+              if (shouldExit == true && context.mounted) {
+                SystemNavigator.pop();
+              }
+            } else {
+              // Kisi aur tab par hain to Dashboard par wapas jao
+              setState(() => _selectedMenu = 'Dashboard');
+            }
+          },
+          child: Scaffold(
+            extendBody: !isDesktop,
+            backgroundColor: Colors.transparent,
+            body: isDesktop ? body : _buildTabBlurWrapper(body),
 
-          // Keep existing bottomNavigationBar for web narrow screen,
-          // hide on desktop (>= 900) and mobile device (!kIsWeb && < 900)
-          bottomNavigationBar: (isDesktop || isMobileDevice)
-              ? null
-              : _buildMobileBottomNav(isDark),
+            // 📱 Expandable floating nav bar (MOBILE ONLY: !kIsWeb && screenWidth < 900)
+            floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+            floatingActionButton: (isMobileDevice && !isKeyboardOpen)
+                ? ExpandableNavBar(
+              key: const ValueKey('expandable_nav_bar'),
+              currentIndex: _getBottomNavIndex(),
+              onItemSelected: _onBottomNavTapped,
+            )
+                : null,
+
+            // Keep existing bottomNavigationBar for web narrow screen,
+            // hide on desktop (>= 900) and mobile device (!kIsWeb && < 900)
+            bottomNavigationBar: (isDesktop || isMobileDevice)
+                ? null
+                : _buildMobileBottomNav(isDark),
+          ),
         );
       },
     );
@@ -1766,7 +1819,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://images.unsplash.com/photo-1565043666747-69f6646db940?auto=format&fit=crop&w=1000&q=70',
+           'https://thedigitalprojectmanager.com/cdn-cgi/image/format=auto,quality=82,onerror=redirect/wp-content/uploads/2024/03/DPM-what-is-a-project-featured-image.png',
           eyebrow: 'Live delivery',
           title: 'Projects in motion',
           subtitle:
@@ -1784,7 +1837,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       slides.add(
         MobileHeroSlide(
           imageUrl:
-              'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1000&q=70',
+              'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQRjr3bgFV8-bUZNMUQX93gz9m639Xvigd2XvjiEc21pw&s=10',
           eyebrow: 'People pulse',
           title: 'Your team, connected',
           subtitle:
