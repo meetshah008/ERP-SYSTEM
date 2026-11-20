@@ -53,12 +53,32 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   String _selectedStatus = 'TODO';
   int? _selectedAssigneeId;
   DateTime? _selectedDueDate;
+  int? _currentEmployeeId;
 
   // Log Hours Form Controllers (Inline - NO POPUP)
   final _logHoursCtrl = TextEditingController();
   final _logDescCtrl = TextEditingController();
   int? _logWorkerId;
   bool _isLoggingHours = false;
+
+  bool get _isAssignee {
+    if (_currentEmployeeId == null || _task == null) return false;
+    final assignedTo = _task!['assigned_to'];
+    if (assignedTo != null && assignedTo.toString() == _currentEmployeeId.toString()) {
+      return true;
+    }
+    final assignees = _task!['assignees'];
+    if (assignees is List) {
+      for (final a in assignees) {
+        if (a is Map && a['employee_id']?.toString() == _currentEmployeeId.toString()) {
+          return true;
+        } else if (a.toString() == _currentEmployeeId.toString()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -89,8 +109,32 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     final canEdit = isSuper || await SessionManager.hasPermission('tasks_edit');
     final canDelete = isSuper || await SessionManager.hasPermission('tasks_delete');
     final canTimesheet = isSuper || await SessionManager.hasPermission('tasks_log_timesheet');
+
+    int? empId = session['employeeId'] as int?;
+    final userId = session['userId'] as int?;
+    if (empId == null && userId != null) {
+      try {
+        final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data['success'] == true && data['data'] is List) {
+            final empList = data['data'] as List;
+            final userEmail = (session['email'] as String? ?? '').toLowerCase();
+            final match = empList.firstWhere(
+              (e) => (e['user_id'] == userId) || (userEmail.isNotEmpty && (e['email']?.toString().toLowerCase() == userEmail)),
+              orElse: () => null,
+            );
+            if (match != null && match['employee_id'] != null) {
+              empId = int.tryParse(match['employee_id'].toString());
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (mounted) {
       setState(() {
+        _currentEmployeeId = empId;
         _canEditTask = canEdit;
         _canDeleteTask = canDelete;
         _canLogTimesheet = canTimesheet;
@@ -176,8 +220,14 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     } catch (_) {}
   }
 
-  // 1. UPDATE TASK STATUS LIVE
+  // 1. UPDATE TASK STATUS LIVE (Only assigned employee is allowed!)
   Future<void> _updateStatus(String newStatus) async {
+    if (!_isAssignee) {
+      _showSnackbar('Access Denied: Only the assigned employee can change task status!', isSuccess: false);
+      return;
+    }
+
+    final prevStatus = _selectedStatus;
     setState(() {
       _selectedStatus = newStatus;
       if (_task != null) _task!['status'] = newStatus;
@@ -185,14 +235,33 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     });
 
     try {
-      await ApiClient.put(
+      final res = await ApiClient.put(
         Uri.parse('$_apiHost/api/tasks/${widget.taskId}/status'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'status': newStatus}),
       );
-      widget.onTaskUpdated?.call();
-      _showSnackbar('Task status changed to $newStatus', isSuccess: true);
+      if (res.statusCode == 200) {
+        widget.onTaskUpdated?.call();
+        _showSnackbar('Task status changed to $newStatus', isSuccess: true);
+      } else if (res.statusCode == 403) {
+        final err = jsonDecode(res.body);
+        setState(() {
+          _selectedStatus = prevStatus;
+          if (_task != null) _task!['status'] = prevStatus;
+        });
+        _showSnackbar(err['message'] ?? 'Access Denied: Only assigned employee can change status!', isSuccess: false);
+      } else {
+        setState(() {
+          _selectedStatus = prevStatus;
+          if (_task != null) _task!['status'] = prevStatus;
+        });
+        _showSnackbar('Error updating status (${res.statusCode})', isSuccess: false);
+      }
     } catch (e) {
+      setState(() {
+        _selectedStatus = prevStatus;
+        if (_task != null) _task!['status'] = prevStatus;
+      });
       _showSnackbar('Error updating status: $e', isSuccess: false);
     }
   }
@@ -592,47 +661,81 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               ),
               const SizedBox(width: 8),
 
-              // Status Dropdown / Cycle Pill
-              PopupMenuButton<String>(
-                tooltip: 'Change Status',
-                onSelected: _updateStatus,
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(value: 'TODO', child: Text('⏳ TO DO')),
-                  const PopupMenuItem(value: 'IN_PROGRESS', child: Text('⚡ IN PROGRESS')),
-                  const PopupMenuItem(value: 'DONE', child: Text('✅ COMPLETED')),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: statColor.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(isDone ? Icons.check_circle_rounded : Icons.pending_rounded, size: 14, color: statColor),
-                      const SizedBox(width: 4),
-                      Text(status, style: TextStyle(color: statColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 4),
-                      Icon(Icons.arrow_drop_down, size: 16, color: statColor),
-                    ],
+              // Status Badge / Controls (Only assigned employee can change status)
+              if (_isAssignee) ...[
+                PopupMenuButton<String>(
+                  tooltip: 'Change Status',
+                  onSelected: _updateStatus,
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(value: 'TODO', child: Text('⏳ TO DO')),
+                    const PopupMenuItem(value: 'IN_PROGRESS', child: Text('⚡ IN PROGRESS')),
+                    const PopupMenuItem(value: 'DONE', child: Text('✅ COMPLETED')),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: statColor.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(isDone ? Icons.check_circle_rounded : Icons.pending_rounded, size: 14, color: statColor),
+                        const SizedBox(width: 4),
+                        Text(status, style: TextStyle(color: statColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_drop_down, size: 16, color: statColor),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-
-              const Spacer(),
-
-              // Quick Toggle Checkbox
-              IconButton(
-                icon: Icon(
-                  isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                  color: isDone ? const Color(0xFF10B981) : textSub,
-                  size: 26,
+                const Spacer(),
+                IconButton(
+                  icon: Icon(
+                    isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                    color: isDone ? const Color(0xFF10B981) : textSub,
+                    size: 26,
+                  ),
+                  tooltip: isDone ? 'Mark as Not Done' : 'Mark as Done',
+                  onPressed: () => _updateStatus(isDone ? 'TODO' : 'DONE'),
                 ),
-                tooltip: isDone ? 'Mark as Not Done' : 'Mark as Done',
-                onPressed: () => _updateStatus(isDone ? 'TODO' : 'DONE'),
-              ),
+              ] else ...[
+                // Read-Only Status Indicator for other members
+                Tooltip(
+                  message: 'Status: $status (Only assigned employee can update)',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: statColor.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_outline_rounded, size: 12, color: statColor),
+                        const SizedBox(width: 5),
+                        Text(status, style: TextStyle(color: statColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 5),
+                        Text('(Assigned User Only)', style: TextStyle(color: statColor.withValues(alpha: 0.75), fontSize: 9.5)),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Tooltip(
+                  message: 'Status is read-only (Only assigned employee can change)',
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Icon(
+                      isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                      color: isDone ? const Color(0xFF10B981) : textSub.withValues(alpha: 0.35),
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 14),

@@ -109,6 +109,7 @@ exports.createProject = async (req, res) => {
             notifiedUserIds.add(eu.user_id);
             const isLeader = eu.employee_id === project_leader_id;
             await sendNotification({
+              companyId: companyId,
               title: isLeader ? 'New Project Assigned as Leader 🚀' : 'Added to Project 🚀',
               message: `You have been assigned to project "${project_name}" (${project_code}) as ${isLeader ? 'Project Leader' : 'Team Member'}.`,
               type: 'PROJECT_ASSIGNED',
@@ -260,23 +261,14 @@ exports.getProjectDetails = async (req, res) => {
       WHERE pm.project_id = ?
     `, [id]);
 
-    // C. Tasks aur unke Subtasks (Private self-tasks only visible strictly to the assigned employee; neither admin nor manager can see them)
+    // C. Tasks aur unke Subtasks: All project tasks are visible to all project members (including self-assigned tasks)
     const [tasks] = await db.query(`
       SELECT t.*, e.full_name as assigned_worker, e.emp_code
       FROM task t
       LEFT JOIN employee e ON t.assigned_to = e.employee_id
       WHERE t.project_id = ?
-      AND (
-        t.is_private = 0 OR t.is_private IS NULL
-        OR (
-          ? IS NOT NULL AND (
-            t.assigned_to = ?
-            OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
-          )
-        )
-      )
       ORDER BY t.task_id DESC
-    `, [id, empId, empId, empId]);
+    `, [id]);
 
     // Har task ke subtasks aur assignees attach karna
     for (const task of tasks) {

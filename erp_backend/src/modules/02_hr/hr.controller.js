@@ -1248,7 +1248,7 @@ exports.updateLeaveStatus = async (req, res) => {
     // Send notification to applicant
     try {
       const [applicantRows] = await db.query(
-        `SELECT l.leave_type, l.total_days, l.paid_days, l.unpaid_days, l.deduction_amount, e.user_id, e.full_name
+        `SELECT l.leave_type, l.total_days, l.paid_days, l.unpaid_days, l.deduction_amount, e.user_id, e.full_name, e.company_id
          FROM LEAVE_REQUEST l
          JOIN EMPLOYEE e ON l.employee_id = e.employee_id
          WHERE l.leave_id = ?`,
@@ -1271,7 +1271,7 @@ exports.updateLeaveStatus = async (req, res) => {
           INSERT INTO NOTIFICATION (company_id, title, message, type, reference_id, target_user_id)
           VALUES (?, ?, ?, 'LEAVE_STATUS', ?, ?)
         `, [
-          1,
+          applicant.company_id || 1,
           isApproved ? 'Leave Approved 🎉' : 'Leave Rejected ❌',
           msg,
           leaveId,
@@ -2373,12 +2373,22 @@ exports.updateEmployeeStatus = async (req, res) => {
   };
   ensureNotificationTable();
 
-  // 1. Get Targeted Notifications (Role and User specific)
+  // 1. Get Targeted Notifications (Role and User specific, strictly isolated by Company)
   exports.getNotifications = async (req, res) => {
     try {
       await ensureNotificationTable();
       const { user_id, role, can_approve_leaves } = req.query;
-      const companyId = resolveCompanyId(req);
+      let companyId = resolveCompanyId(req);
+      const uid = user_id ? parseInt(user_id, 10) : null;
+
+      if (!companyId && uid) {
+        try {
+          const [uRows] = await db.query('SELECT company_id FROM USER WHERE user_id = ?', [uid]);
+          if (uRows.length > 0 && uRows[0].company_id) {
+            companyId = uRows[0].company_id;
+          }
+        } catch (_) {}
+      }
 
       let query = `
         SELECT notification_id, title, message, type, reference_id, target_user_id, target_role, sender_user_id, is_read, created_at
@@ -2390,9 +2400,10 @@ exports.updateEmployeeStatus = async (req, res) => {
       if (companyId) {
         query += ` AND company_id = ?`;
         params.push(companyId);
+      } else {
+        query += ` AND 1 = 0`; // Strict company isolation: never leak cross-tenant notifications
       }
 
-      const uid = user_id ? parseInt(user_id, 10) : null;
       const isAdminOrApprover = role === 'Super Admin' || can_approve_leaves === 'true' || can_approve_leaves === true;
 
       if (uid) {
@@ -2445,22 +2456,45 @@ exports.updateEmployeeStatus = async (req, res) => {
   exports.markNotificationAsRead = async (req, res) => {
     try {
       const { id } = req.params;
-      await db.query('UPDATE NOTIFICATION SET is_read = 1 WHERE notification_id = ?', [id]);
+      const companyId = resolveCompanyId(req);
+      let query = 'UPDATE NOTIFICATION SET is_read = 1 WHERE notification_id = ?';
+      const params = [id];
+      if (companyId) {
+        query += ' AND company_id = ?';
+        params.push(companyId);
+      }
+      await db.query(query, params);
       return res.status(200).json({ success: true, message: 'Marked as read' });
     } catch (error) {
       return res.status(500).json({ success: false, error: error.message });
     }
   };
 
-  // 3. Mark All Notifications as Read (Targeted to the requesting user/role)
+  // 3. Mark All Notifications as Read (Targeted to the requesting user/role & company)
   exports.markAllNotificationsAsRead = async (req, res) => {
     try {
       const { user_id, role, can_approve_leaves } = req.query;
       const uid = user_id ? parseInt(user_id, 10) : null;
+      let companyId = resolveCompanyId(req);
+
+      if (!companyId && uid) {
+        try {
+          const [uRows] = await db.query('SELECT company_id FROM USER WHERE user_id = ?', [uid]);
+          if (uRows.length > 0 && uRows[0].company_id) {
+            companyId = uRows[0].company_id;
+          }
+        } catch (_) {}
+      }
+
       const isAdminOrApprover = role === 'Super Admin' || can_approve_leaves === 'true' || can_approve_leaves === true;
 
       let query = 'UPDATE NOTIFICATION SET is_read = 1 WHERE 1=1';
       const params = [];
+
+      if (companyId) {
+        query += ' AND company_id = ?';
+        params.push(companyId);
+      }
 
       if (uid) {
         if (isAdminOrApprover) {
@@ -2582,14 +2616,14 @@ exports.createIncrement = async (req, res) => {
 
     // Send notification to employee
     try {
-      const [empRows] = await db.query('SELECT user_id, full_name FROM EMPLOYEE WHERE employee_id = ?', [employee_id]);
+      const [empRows] = await db.query('SELECT user_id, full_name, company_id FROM EMPLOYEE WHERE employee_id = ?', [employee_id]);
       if (empRows.length > 0 && empRows[0].user_id) {
         await ensureNotificationTable();
         await db.query(`
           INSERT INTO NOTIFICATION (company_id, title, message, type, reference_id, target_user_id)
           VALUES (?, ?, ?, 'SALARY_INCREMENT', ?, ?)
         `, [
-          1,
+          empRows[0].company_id || 1,
           'Salary Increment Approved 🎉',
           `Congratulations! Your monthly salary has been revised to ₹${revSal} (+₹${incAmount}) effective from ${effective_date}.`,
           result.insertId,

@@ -605,47 +605,70 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     );
   }
 
+  bool get _isAssignedToThisTask {
+    if (!isEdit) return true; // new task being created
+    if (_currentEmployeeId == null || widget.task == null) return false;
+    final assignedTo = widget.task!['assigned_to'];
+    if (assignedTo != null && assignedTo.toString() == _currentEmployeeId.toString()) return true;
+    final assignees = widget.task!['assignees'];
+    if (assignees is List) {
+      for (final a in assignees) {
+        if (a is Map && a['employee_id']?.toString() == _currentEmployeeId.toString()) return true;
+        if (a.toString() == _currentEmployeeId.toString()) return true;
+      }
+    }
+    return false;
+  }
+
   Widget _buildStatusChip(String value, String label, Color color) {
     final isSelected = _selectedStatus.toUpperCase() == value.toUpperCase();
     final isDark = ThemeController.isDarkMode.value;
+    final canChange = _isAssignedToThisTask;
 
-    return InkWell(
-      onTap: () => setState(() => _selectedStatus = value),
-      borderRadius: BorderRadius.circular(9),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? color.withValues(alpha: isDark ? 0.3 : 0.15)
-              : (isDark ? const Color(0xFF0B132B) : const Color(0xFFF8FAFC)),
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: isSelected ? color : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
-            width: isSelected ? 1.8 : 1,
+    return Tooltip(
+      message: canChange ? 'Select status' : 'Only assigned employee can modify task status',
+      child: InkWell(
+        onTap: canChange ? () => setState(() => _selectedStatus = value) : null,
+        borderRadius: BorderRadius.circular(9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? color.withValues(alpha: isDark ? 0.3 : 0.15)
+                : (isDark ? const Color(0xFF0B132B) : const Color(0xFFF8FAFC)),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: isSelected ? color : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+              width: isSelected ? 1.8 : 1,
+            ),
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: isSelected ? color : Colors.grey,
-                shape: BoxShape.circle,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: isSelected ? color : (canChange ? Colors.grey : Colors.grey.withValues(alpha: 0.4)),
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? color : (isDark ? Colors.white70 : const Color(0xFF64748B)),
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                fontSize: 12.5,
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? color : (canChange ? (isDark ? Colors.white70 : const Color(0xFF475569)) : Colors.grey),
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                ),
               ),
-            ),
-          ],
+              if (!canChange) ...[
+                const SizedBox(width: 5),
+                Icon(Icons.lock_outline_rounded, size: 12, color: Colors.grey.withValues(alpha: 0.7)),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -1201,6 +1224,23 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                 _buildStatusChip('DONE', 'Done / Completed', const Color(0xFF10B981)),
                               ],
                             ),
+                            if (isEdit && !_isAssignedToThisTask) ...[
+                              const SizedBox(height: 5),
+                              Row(
+                                children: [
+                                  Icon(Icons.info_outline_rounded, size: 12, color: isDark ? Colors.amber[300] : Colors.amber[800]),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Only assigned employee can modify task status',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? Colors.amber[300] : Colors.amber[800],
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 16),
 
                             // Priority Chips

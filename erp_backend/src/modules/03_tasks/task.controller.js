@@ -1,6 +1,59 @@
 const db = require('../../config/db');
+const jwt = require('jsonwebtoken');
 const { resolveCompanyId } = require('../../utils/tenant');
 
+async function resolveRequesterEmployee(req) {
+  // 1. Direct req.user
+  if (req.user && (req.user.employeeId || req.user.employee_id)) {
+    return parseInt(req.user.employeeId || req.user.employee_id, 10);
+  }
+
+  // 2. Authorization Bearer Token
+  if (req.headers && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    try {
+      const token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      if (decoded && (decoded.employeeId || decoded.employee_id)) {
+        return parseInt(decoded.employeeId || decoded.employee_id, 10);
+      }
+      if (decoded && (decoded.userId || decoded.user_id)) {
+        const uId = parseInt(decoded.userId || decoded.user_id, 10);
+        const [empRows] = await db.query('SELECT employee_id FROM employee WHERE user_id = ? LIMIT 1', [uId]);
+        if (empRows.length > 0) return empRows[0].employee_id;
+      }
+    } catch (_) {}
+  }
+
+  // 3. Headers
+  if (req.headers && req.headers['x-employee-id']) {
+    const eid = parseInt(req.headers['x-employee-id'], 10);
+    if (!isNaN(eid)) return eid;
+  }
+  if (req.headers && req.headers['x-user-id']) {
+    const uid = parseInt(req.headers['x-user-id'], 10);
+    if (!isNaN(uid)) {
+      const [empRows] = await db.query('SELECT employee_id FROM employee WHERE user_id = ? LIMIT 1', [uid]);
+      if (empRows.length > 0) return empRows[0].employee_id;
+    }
+  }
+
+  // 4. Body / Query
+  const rawEmpId = req.body?.employee_id || req.query?.employee_id;
+  if (rawEmpId) {
+    const eid = parseInt(rawEmpId, 10);
+    if (!isNaN(eid)) return eid;
+  }
+  const rawUserId = req.body?.user_id || req.query?.user_id || req.user?.id || req.user?.userId;
+  if (rawUserId) {
+    const uid = parseInt(rawUserId, 10);
+    if (!isNaN(uid)) {
+      const [empRows] = await db.query('SELECT employee_id FROM employee WHERE user_id = ? LIMIT 1', [uid]);
+      if (empRows.length > 0) return empRows[0].employee_id;
+    }
+  }
+
+  return null;
+}
 
 const sendNotification = async ({ companyId = 1, title, message, type, referenceId, targetUserId }) => {
   try {
@@ -72,6 +125,7 @@ exports.createTask = async (req, res) => {
           for (const eu of empUsers) {
             if (eu.user_id) {
               await sendNotification({
+                companyId: effCompanyId,
                 title: 'New Task Assigned 📋',
                 message: `You have been assigned a new task "${title}" (Priority: ${priority || 'MEDIUM'}).`,
                 type: 'TASK_ASSIGNED',
@@ -164,11 +218,12 @@ exports.getTasks = async (req, res) => {
       params.push(project_id);
     }
 
-    // Strict self-assigned / private task privacy:
-    // If a task is marked private (is_private = 1), it is STRICTLY visible ONLY to the assigned employee!
-    // Admin, Managers, and Project Leaders CANNOT see other people's private tasks!
+    // Strict task privacy rules:
+    // 1. If a task belongs to a project (project_id IS NOT NULL), it is visible to all members of that project (including self-assigned tasks).
+    // 2. If it is a General Task (project_id IS NULL), private tasks (is_private = 1) remain visible ONLY to the assigned employee!
     whereConditions.push(`(
-      (t.is_private = 0 OR t.is_private IS NULL)
+      t.project_id IS NOT NULL
+      OR (t.is_private = 0 OR t.is_private IS NULL)
       OR (
         ? IS NOT NULL AND (
           t.assigned_to = ?
@@ -298,10 +353,41 @@ exports.getTaskDetails = async (req, res) => {
 };
 
 // 3. TASK KA STATUS BADALNA (TODO -> IN_PROGRESS -> DONE)
+// STRICT REQUIREMENT: Only the assigned employee(s) can update task status!
 exports.updateTaskStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body; // 'TODO', 'IN_PROGRESS', 'DONE'
+
+    if (!status) {
+      return res.status(400).json({ success: false, message: 'Status is required!' });
+    }
+
+    // A. Fetch task details
+    const [tasks] = await db.query('SELECT task_id, assigned_to, status FROM task WHERE task_id = ?', [id]);
+    if (tasks.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found!' });
+    }
+    const currentTask = tasks[0];
+
+    // B. Collect all assigned employee IDs
+    const [assigneeRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [id]);
+    const assigneeIds = new Set(
+      [currentTask.assigned_to, ...assigneeRows.map(r => r.employee_id)]
+        .filter(e => e !== null && e !== undefined)
+        .map(e => parseInt(e, 10))
+    );
+
+    // C. Resolve authenticated requester employee ID
+    const requesterEmpId = await resolveRequesterEmployee(req);
+
+    // D. Enforce permission: ONLY assigned user can update status
+    if (!requesterEmpId || !assigneeIds.has(requesterEmpId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access Denied: Only the assigned employee can change task status!'
+      });
+    }
 
     await db.query('UPDATE task SET status = ? WHERE task_id = ?', [status, id]);
 
@@ -310,11 +396,19 @@ exports.updateTaskStatus = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // 4. TASK UPDATE KARNA (Title, Description, Multiple Assignees, Priority, Status, Hours)
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
     const { assigned_to, assignees, project_id, title, description, priority, status, due_date, estimated_hours } = req.body;
+
+    // Fetch existing task
+    const [existingTasks] = await db.query('SELECT task_id, assigned_to, status FROM task WHERE task_id = ?', [id]);
+    if (existingTasks.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found!' });
+    }
+    const existing = existingTasks[0];
 
     // Handle multiple assignees or single assigned_to
     let assigneeList = [];
@@ -328,6 +422,25 @@ exports.updateTask = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least 1 Assignee and Title are required!' });
     }
 
+    // Check if status is being changed: only assigned employee is allowed to change status!
+    let targetStatus = existing.status;
+    if (status && status !== existing.status) {
+      const [assigneeRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [id]);
+      const assigneeIds = new Set(
+        [existing.assigned_to, ...assigneeRows.map(r => r.employee_id)]
+          .filter(e => e !== null && e !== undefined)
+          .map(e => parseInt(e, 10))
+      );
+      const requesterEmpId = await resolveRequesterEmployee(req);
+      if (!requesterEmpId || !assigneeIds.has(requesterEmpId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access Denied: Only the assigned employee can change task status!'
+        });
+      }
+      targetStatus = status;
+    }
+
     const primaryAssignee = assigneeList[0];
 
     await db.query(
@@ -337,7 +450,7 @@ exports.updateTask = async (req, res) => {
         title = ?,
         description = ?,
         priority = COALESCE(?, priority),
-        status = COALESCE(?, status),
+        status = ?,
         due_date = ?,
         estimated_hours = COALESCE(?, estimated_hours)
       WHERE task_id = ?`,
@@ -347,7 +460,7 @@ exports.updateTask = async (req, res) => {
         title,
         description !== undefined ? description : '',
         priority || null,
-        status || null,
+        targetStatus,
         due_date !== undefined ? due_date : null,
         estimated_hours !== undefined ? estimated_hours : 0,
         id

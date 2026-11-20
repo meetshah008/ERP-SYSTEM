@@ -546,8 +546,41 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     }
   }
 
+  bool _isAssignedToTask(Map<String, dynamic> task) {
+    if (_currentEmployeeId == null) return false;
+    final assignedTo = task['assigned_to'];
+    if (assignedTo != null && assignedTo.toString() == _currentEmployeeId.toString()) {
+      return true;
+    }
+    final assignees = task['assignees'];
+    if (assignees is List) {
+      for (final a in assignees) {
+        if (a is Map && a['employee_id']?.toString() == _currentEmployeeId.toString()) {
+          return true;
+        } else if (a.toString() == _currentEmployeeId.toString()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // 5. TASK STATUS UPDATE (TODO -> IN_PROGRESS -> DONE)
-  Future<void> _updateTaskStatus(int taskId, String newStatus) async {
+  // Enforces that only the assigned employee can change status
+  Future<void> _updateTaskStatus(int taskId, String newStatus, [Map<String, dynamic>? task]) async {
+    if (task != null && !_isAssignedToTask(task)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Access Denied: Only the assigned employee can change task status!'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final res = await ApiClient.put(
         Uri.parse('$_apiHost/api/tasks/$taskId/status'),
@@ -560,6 +593,17 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           _fetchProjectDetails(_selectedProject!['project_id']);
         }
         _fetchProjects();
+      } else if (res.statusCode == 403) {
+        final err = jsonDecode(res.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(err['message'] ?? 'Access Denied: Only assigned employee can change task status!'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (_) {}
   }
@@ -2972,6 +3016,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         final task = list[index];
         final status = _taskStatus(task);
         final isDone = status == 'DONE';
+        final isAssignee = _isAssignedToTask(task);
         final priority = (task['priority'] ?? 'MEDIUM').toString().toUpperCase();
         final priColor = _generalPriorityColor(priority);
         final isOverdue = _isTaskOverdue(task);
@@ -2995,18 +3040,25 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           onTap: () => _openTaskDetailsDialog(task),
           child: Row(
             children: [
-              // 1. Status Check Icon
-              InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () => _updateTaskStatus(task['task_id'], nextStatus),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: Icon(
-                    isDone
-                        ? Icons.check_circle_rounded
-                        : (status == 'IN_PROGRESS' ? Icons.timelapse_rounded : Icons.radio_button_unchecked_rounded),
-                    color: isDone ? const Color(0xFF10B981) : (status == 'IN_PROGRESS' ? const Color(0xFFF59E0B) : textSub),
-                    size: 20,
+              // 1. Status Check Icon (Interactive only for assigned employee)
+              Tooltip(
+                message: isAssignee ? 'Change status' : 'Status: $status (Only assigned employee can update)',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: isAssignee ? () => _updateTaskStatus(task['task_id'], nextStatus, task) : null,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Icon(
+                      isDone
+                          ? Icons.check_circle_rounded
+                          : (status == 'IN_PROGRESS' ? Icons.timelapse_rounded : Icons.radio_button_unchecked_rounded),
+                      color: isDone
+                          ? const Color(0xFF10B981)
+                          : (status == 'IN_PROGRESS'
+                              ? const Color(0xFFF59E0B)
+                              : (isAssignee ? textSub : textSub.withValues(alpha: 0.35))),
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
@@ -3255,12 +3307,13 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       textTitle: textTitle,
       textSub: textSub,
       isDark: isDark,
+      isAssignee: _isAssignedToTask(task),
       canEdit: _canEditTask,
       canDelete: _canDeleteTask,
       onTap: () => _openTaskDetailsDialog(task),
       onEdit: () => _openEditTaskDialog(task),
       onDelete: () => _confirmDeleteTask(task),
-      onStatusChange: (id, next) => _updateTaskStatus(id, next),
+      onStatusChange: (id, next) => _updateTaskStatus(id, next, task),
       getPriorityColor: _generalPriorityColor,
       getAvatarColor: _avatarColorForName,
       buildDueDateChip: _buildTaskDueDateChip,
@@ -3835,12 +3888,13 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   textSub: textSub,
                   isDark: isDark,
                   isMobile: isMobile,
+                  isAssignee: _isAssignedToTask(t),
                   canEdit: _canEditTask,
                   canDelete: _canDeleteTask,
                   onToggleStatus: () {
                     final isDone = t['status'] == 'DONE';
                     final next = isDone ? 'TODO' : 'DONE';
-                    _updateTaskStatus(t['task_id'], next);
+                    _updateTaskStatus(t['task_id'], next, t);
                   },
                   onOpenDetails: () => _openTaskDetailsDialog(t),
                   onEdit: () => _openTaskDetailsDialog(t),
@@ -3852,7 +3906,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                       if (_selectedProject != null) _fetchProjectDetails(_selectedProject!['project_id']);
                     } catch (_) {}
                   },
-                  onUpdateStatus: (taskId, next) => _updateTaskStatus(taskId, next),
+                  onUpdateStatus: (taskId, next) => _updateTaskStatus(taskId, next, t),
                   onAddSubtask: (taskId, title) => _openAddSubtaskDialog(taskId, title),
                 );
               },
@@ -4419,6 +4473,7 @@ class _GeneralTaskKanbanCard extends StatefulWidget {
   final bool Function(dynamic) isTaskOverdue;
   final bool canEdit;
   final bool canDelete;
+  final bool isAssignee;
 
   const _GeneralTaskKanbanCard({
     required this.task,
@@ -4433,6 +4488,7 @@ class _GeneralTaskKanbanCard extends StatefulWidget {
     required this.onDelete,
     this.canEdit = true,
     this.canDelete = true,
+    this.isAssignee = false,
     required this.onStatusChange,
     required this.getPriorityColor,
     required this.getAvatarColor,
@@ -4719,39 +4775,70 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Move to ${widget.getTaskStatusLabel(nextStatus)}',
-                        child: InkWell(
-                          onTap: () => widget.onStatusChange(task['task_id'], nextStatus),
-                          borderRadius: BorderRadius.circular(8),
+                      if (widget.isAssignee)
+                        Tooltip(
+                          message: 'Move to ${widget.getTaskStatusLabel(nextStatus)}',
+                          child: InkWell(
+                            onTap: () => widget.onStatusChange(task['task_id'], nextStatus),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: widget.columnColor.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: widget.columnColor.withValues(alpha: 0.24),
+                                  width: 0.9,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(nextIcon, size: 12, color: widget.columnColor),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    nextLabel,
+                                    style: TextStyle(
+                                      color: widget.columnColor,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        Tooltip(
+                          message: 'Status: ${widget.getTaskStatusLabel(status)} (Only assigned employee can update)',
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                             decoration: BoxDecoration(
-                              color: widget.columnColor.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(8),
+                              color: widget.isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(7),
                               border: Border.all(
-                                color: widget.columnColor.withValues(alpha: 0.24),
-                                width: 0.9,
+                                color: widget.isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                                width: 0.8,
                               ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(nextIcon, size: 12, color: widget.columnColor),
-                                const SizedBox(width: 3),
+                                Icon(Icons.lock_outline_rounded, size: 10.5, color: widget.textSub.withValues(alpha: 0.7)),
+                                const SizedBox(width: 3.5),
                                 Text(
-                                  nextLabel,
+                                  widget.getTaskStatusLabel(status),
                                   style: TextStyle(
-                                    color: widget.columnColor,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.bold,
+                                    color: widget.textSub,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ],
@@ -4833,22 +4920,29 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // 1. Status Toggle Check Icon
-                InkWell(
-                  onTap: () => widget.onStatusChange(task['task_id'], nextStatus),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 9, top: 1, bottom: 1),
-                    child: Icon(
-                      isDone
-                          ? Icons.check_circle_rounded
-                          : (status == 'IN_PROGRESS'
-                              ? Icons.timelapse_rounded
-                              : Icons.radio_button_unchecked_rounded),
-                      size: 21,
-                      color: isDone
-                          ? (widget.isDark ? Colors.white : const Color(0xFF18181B))
-                          : (status == 'IN_PROGRESS' ? const Color(0xFFF59E0B) : (widget.isDark ? Colors.white54 : const Color(0xFF71717A))),
+                // 1. Status Toggle Check Icon (Interactive only for assigned employee)
+                Tooltip(
+                  message: widget.isAssignee ? 'Change status' : 'Status: $status (Only assigned employee can update)',
+                  child: InkWell(
+                    onTap: widget.isAssignee ? () => widget.onStatusChange(task['task_id'], nextStatus) : null,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 9, top: 1, bottom: 1),
+                      child: Icon(
+                        isDone
+                            ? Icons.check_circle_rounded
+                            : (status == 'IN_PROGRESS'
+                                ? Icons.timelapse_rounded
+                                : Icons.radio_button_unchecked_rounded),
+                        size: 21,
+                        color: isDone
+                            ? (widget.isDark ? Colors.white : const Color(0xFF18181B))
+                            : (status == 'IN_PROGRESS'
+                                ? const Color(0xFFF59E0B)
+                                : (widget.isAssignee
+                                    ? (widget.isDark ? Colors.white54 : const Color(0xFF71717A))
+                                    : (widget.isDark ? Colors.white24 : const Color(0xFFA1A1AA)))),
+                      ),
                     ),
                   ),
                 ),
@@ -5069,6 +5163,7 @@ class _ProjectWorkspaceTaskCard extends StatefulWidget {
 
   final bool canEdit;
   final bool canDelete;
+  final bool isAssignee;
 
   const _ProjectWorkspaceTaskCard({
     required this.task,
@@ -5080,6 +5175,7 @@ class _ProjectWorkspaceTaskCard extends StatefulWidget {
     required this.isMobile,
     this.canEdit = true,
     this.canDelete = true,
+    this.isAssignee = false,
     required this.onToggleStatus,
     required this.onOpenDetails,
     required this.onEdit,
@@ -5139,15 +5235,22 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(4),
-                  onTap: widget.onToggleStatus,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 1, right: 10),
-                    child: Icon(
-                      isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                      color: isDone ? const Color(0xFF10B981) : widget.textSub,
-                      size: 21,
+                Tooltip(
+                  message: widget.isAssignee
+                      ? 'Click to toggle status'
+                      : 'Status: ${t['status'] ?? 'TODO'} (Only assigned employee can update)',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: widget.isAssignee ? widget.onToggleStatus : null,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 1, right: 10),
+                      child: Icon(
+                        isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                        color: isDone
+                            ? const Color(0xFF10B981)
+                            : (widget.isAssignee ? widget.textSub : widget.textSub.withValues(alpha: 0.35)),
+                        size: 21,
+                      ),
                     ),
                   ),
                 ),
@@ -5302,26 +5405,51 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
                   child: Text(priority, style: TextStyle(color: priColor, fontSize: 10.5, fontWeight: FontWeight.bold)),
                 ),
 
-                // Status Pill (Clickable)
-                InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () {
-                    final current = t['status'] ?? 'TODO';
-                    final next = current == 'TODO' ? 'IN_PROGRESS' : (current == 'IN_PROGRESS' ? 'DONE' : 'TODO');
-                    widget.onUpdateStatus(t['task_id'], next);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                    decoration: BoxDecoration(
-                      color: (isDone ? const Color(0xFF10B981) : (t['status'] == 'IN_PROGRESS' ? const Color(0xFFD97706) : Colors.grey)).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      t['status'] ?? 'TODO',
-                      style: TextStyle(
-                        color: isDone ? const Color(0xFF10B981) : (t['status'] == 'IN_PROGRESS' ? const Color(0xFFD97706) : widget.textSub),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
+                // Status Pill (Clickable only for assigned employee)
+                Tooltip(
+                  message: widget.isAssignee
+                      ? 'Click to change status'
+                      : 'Status: ${t['status'] ?? 'TODO'} (Only assigned employee can update)',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: widget.isAssignee
+                        ? () {
+                            final current = t['status'] ?? 'TODO';
+                            final next = current == 'TODO' ? 'IN_PROGRESS' : (current == 'IN_PROGRESS' ? 'DONE' : 'TODO');
+                            widget.onUpdateStatus(t['task_id'], next);
+                          }
+                        : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: (isDone
+                                ? const Color(0xFF10B981)
+                                : (t['status'] == 'IN_PROGRESS' ? const Color(0xFFD97706) : Colors.grey))
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (!widget.isAssignee) ...[
+                            Icon(Icons.lock_outline_rounded,
+                                size: 10.5,
+                                color: isDone
+                                    ? const Color(0xFF10B981)
+                                    : (t['status'] == 'IN_PROGRESS' ? const Color(0xFFD97706) : widget.textSub)),
+                            const SizedBox(width: 3.5),
+                          ],
+                          Text(
+                            t['status'] ?? 'TODO',
+                            style: TextStyle(
+                              color: isDone
+                                  ? const Color(0xFF10B981)
+                                  : (t['status'] == 'IN_PROGRESS' ? const Color(0xFFD97706) : widget.textSub),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
