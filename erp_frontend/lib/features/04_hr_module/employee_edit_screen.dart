@@ -47,6 +47,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   // ================= 2. COMPANY DETAILS =================
   int? _selectedDepartmentId;
   String _selectedRole = 'Employee';
+  String _selectedManagerModule = 'hr';
   String _selectedEmploymentType = 'Permanent';
   String _selectedWeeklyOff = 'Sunday';
   String _selectedStatus = 'active';
@@ -257,6 +258,8 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
         // 2. Company Details
         'department_id': _selectedDepartmentId,
         'designation': _designationController.text.trim(),
+        'role': _selectedRole,
+        'manager_module': _selectedRole == 'Module Manager' ? _selectedManagerModule : null,
         'employment_type': _selectedEmploymentType,
         'weekly_off': _selectedWeeklyOff,
         'status': _selectedStatus,
@@ -524,6 +527,264 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
       default:
         return 'Salary Structure';
     }
+  }
+
+  String _getModuleName(String modKey) {
+    switch (modKey) {
+      case 'hr':
+        return 'HR & Workforce Management';
+      case 'projects':
+        return 'Projects & Engineering';
+      case 'inventory':
+        return 'Inventory & Warehouse';
+      case 'manufacturing':
+        return 'Manufacturing & Production';
+      case 'finance':
+        return 'Finance & Accounts';
+      default:
+        return 'HR & Workforce Management';
+    }
+  }
+
+  Future<void> _showModuleSelectionDialog() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final modules = [
+      {
+        'key': 'hr',
+        'title': 'HR & Workforce Management',
+        'desc': 'Supervise staff directory, leaves approvals, attendance logs and punch records',
+        'icon': Icons.people_alt_outlined,
+        'color': const Color(0xFF10B981),
+      },
+      {
+        'key': 'projects',
+        'title': 'Projects & Engineering',
+        'desc': 'Create & manage projects, assign tasks to workers, kanban workflows & timesheets',
+        'icon': Icons.assignment_outlined,
+        'color': const Color(0xFF3B82F6),
+      },
+      {
+        'key': 'inventory',
+        'title': 'Inventory & Warehouse',
+        'desc': 'Track stock levels, monitor material requisitions and inward/outward records',
+        'icon': Icons.inventory_2_outlined,
+        'color': const Color(0xFFF59E0B),
+      },
+      {
+        'key': 'manufacturing',
+        'title': 'Manufacturing & Production',
+        'desc': 'Bill of materials (BOM), production work orders, plant scheduling & scrap control',
+        'icon': Icons.precision_manufacturing_outlined,
+        'color': const Color(0xFF8B5CF6),
+      },
+      {
+        'key': 'finance',
+        'title': 'Finance & Accounts',
+        'desc': 'Review financial statements, manage appraisals, salary increments & payroll audit logs',
+        'icon': Icons.account_balance_wallet_outlined,
+        'color': const Color(0xFF06B6D4),
+      },
+    ];
+
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 540),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.manage_accounts_outlined,
+                              color: Color(0xFF10B981),
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Select Operational Module',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Assign this Module Manager strictly to their supervisory domain',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.white60 : Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            color: isDark ? Colors.white54 : Colors.black45,
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: modules.map((m) {
+                              final isSelected = _selectedManagerModule == m['key'];
+                              final modColor = m['color'] as Color;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedManagerModule = m['key'] as String;
+                                    });
+                                    setDialogState(() {});
+                                    Navigator.pop(ctx);
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? modColor.withValues(alpha: isDark ? 0.2 : 0.08)
+                                          : (isDark
+                                              ? Colors.white.withValues(alpha: 0.04)
+                                              : const Color(0xFFF8FAFC)),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? modColor
+                                            : (isDark ? Colors.white10 : Colors.black12),
+                                        width: isSelected ? 1.8 : 1.0,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: modColor.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Icon(
+                                            m['icon'] as IconData,
+                                            color: modColor,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    m['title'] as String,
+                                                    style: TextStyle(
+                                                      fontSize: 13.5,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                                    ),
+                                                  ),
+                                                  if (isSelected) ...[
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: modColor,
+                                                        borderRadius: BorderRadius.circular(4),
+                                                      ),
+                                                      child: const Text(
+                                                        'SELECTED',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                m['desc'] as String,
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  color: isDark ? Colors.white60 : Colors.black54,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Icon(
+                                          isSelected
+                                              ? Icons.radio_button_checked
+                                              : Icons.radio_button_off,
+                                          color: isSelected ? modColor : (isDark ? Colors.white30 : Colors.black26),
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            ),
+                            child: const Text('Confirm Module Selection'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // 2. STEP TABS ROW
@@ -1078,8 +1339,14 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
                           child: Text('Admin'),
                         ),
                       ],
-                      onChanged: (val) =>
-                          setState(() => _selectedRole = val ?? 'Employee'),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _selectedRole = val);
+                          if (val == 'Module Manager') {
+                            _showModuleSelectionDialog();
+                          }
+                        }
+                      },
                       icon: Icons.shield_outlined,
                       isDark: isDark,
                     ),
@@ -1139,13 +1406,65 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
                           child: Text('Super Admin'),
                         ),
                       ],
-                      onChanged: (val) =>
-                          setState(() => _selectedRole = val ?? 'Employee'),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _selectedRole = val);
+                          if (val == 'Module Manager') {
+                            _showModuleSelectionDialog();
+                          }
+                        }
+                      },
                       icon: Icons.shield_outlined,
                       isDark: isDark,
                     ),
                   ),
                 ],
+              ),
+            ],
+            if (_selectedRole == 'Module Manager') ...[
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: _showModuleSelectionDialog,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_user_outlined, size: 16, color: Color(0xFF10B981)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Supervising Module: ${_getModuleName(_selectedManagerModule)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF10B981),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Change',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
             const SizedBox(height: 14),

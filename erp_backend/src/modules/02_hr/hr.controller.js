@@ -1954,7 +1954,9 @@ exports.updateEmployeeStatus = async (req, res) => {
         pan_number,
         emergency_contact,
         unpaid_leave_limit,
-        unpaid_leave_per_day_deduction
+        unpaid_leave_per_day_deduction,
+        role,
+        manager_module
       } = req.body;
 
            await db.query(`
@@ -2022,6 +2024,39 @@ exports.updateEmployeeStatus = async (req, res) => {
           const isUserActive = status.toLowerCase() === 'active';
           await db.query('UPDATE USER SET is_active = ? WHERE user_id = ?', [isUserActive ? 1 : 0, emp[0].user_id]);
         }
+      }
+
+      if (role) {
+        try {
+          await db.query("ALTER TABLE EMPLOYEE ADD COLUMN role VARCHAR(50) DEFAULT 'Employee'");
+        } catch (_) {}
+        await db.query('UPDATE EMPLOYEE SET role = ? WHERE employee_id = ?', [role, id]);
+
+        const [empRows] = await db.query('SELECT user_id, department_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
+        if (empRows.length > 0 && empRows[0].user_id) {
+          const [roleRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [role]);
+          if (roleRows.length > 0) {
+            await db.query('UPDATE USER SET role_id = ? WHERE user_id = ?', [roleRows[0].role_id, empRows[0].user_id]);
+          }
+        }
+
+        try {
+          let deptName = '';
+          const effDeptId = department_id || (empRows.length > 0 ? empRows[0].department_id : null);
+          if (effDeptId) {
+            const [dRows] = await db.query('SELECT name FROM DEPARTMENT WHERE department_id = ?', [effDeptId]);
+            if (dRows.length > 0) deptName = dRows[0].name;
+          }
+          const updatedPerms = getDefaultPermissions(role, deptName, manager_module);
+          for (const [permKey, isGranted] of Object.entries(updatedPerms)) {
+            await db.query(
+              `INSERT INTO EMPLOYEE_PERMISSION (employee_id, permission_key, is_granted)
+               VALUES (?, ?, ?)
+               ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted)`,
+              [id, permKey, isGranted ? 1 : 0]
+            );
+          }
+        } catch (_) {}
       }
 
       return res.status(200).json({
