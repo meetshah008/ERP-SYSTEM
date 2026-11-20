@@ -5360,12 +5360,6 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 14, color: Colors.redAccent),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                              onPressed: () => widget.onDeleteSubtask(st['subtask_id']),
-                            ),
                           ],
                         ),
                       );
