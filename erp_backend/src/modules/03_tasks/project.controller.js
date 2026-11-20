@@ -260,10 +260,7 @@ exports.getProjectDetails = async (req, res) => {
       WHERE pm.project_id = ?
     `, [id]);
 
-    const isLeader = prj[0].project_leader_id === empId || prj[0].head_user_id === empId;
-    const canSeePrivate = isSuperAdmin || isLeader;
-
-    // C. Tasks aur unke Subtasks (Private self-tasks only visible to self, leader and super admin)
+    // C. Tasks aur unke Subtasks (Private self-tasks only visible strictly to the assigned employee; neither admin nor manager can see them)
     const [tasks] = await db.query(`
       SELECT t.*, e.full_name as assigned_worker, e.emp_code
       FROM task t
@@ -271,12 +268,15 @@ exports.getProjectDetails = async (req, res) => {
       WHERE t.project_id = ?
       AND (
         t.is_private = 0 OR t.is_private IS NULL
-        OR ? = 1
-        OR t.assigned_to = ?
-        OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
+        OR (
+          ? IS NOT NULL AND (
+            t.assigned_to = ?
+            OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
+          )
+        )
       )
       ORDER BY t.task_id DESC
-    `, [id, canSeePrivate ? 1 : 0, empId, empId]);
+    `, [id, empId, empId, empId]);
 
     // Har task ke subtasks aur assignees attach karna
     for (const task of tasks) {

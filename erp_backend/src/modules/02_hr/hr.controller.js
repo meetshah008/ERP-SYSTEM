@@ -50,6 +50,7 @@ exports.addEmployee = async (req, res) => {
       leave_balance_paid,
       unpaid_leave_limit,
       unpaid_leave_per_day_deduction,
+      manager_module,
       // Optional Login Account Fields for Step 5
       create_login,
       login_email,
@@ -249,7 +250,7 @@ exports.addEmployee = async (req, res) => {
         if (dRows.length > 0) deptName = dRows[0].name;
       } catch (_) {}
 
-      const initialPerms = getDefaultPermissions(login_role || role || 'Employee', deptName);
+      const initialPerms = getDefaultPermissions(login_role || role || 'Employee', deptName, manager_module);
       for (const [permKey, isGranted] of Object.entries(initialPerms)) {
         await db.query(
           `INSERT INTO EMPLOYEE_PERMISSION (employee_id, permission_key, is_granted)
@@ -297,7 +298,7 @@ async function ensureAdminEmployeeRecords() {
       const empCode = `${codePrefix}-${String(u.user_id).padStart(3, '0')}`;
       const designation = isSuper ? 'System Administrator' : (u.role_name || 'Staff');
 
-      let branchId = 1;
+      let branchId = null;
       try {
         const [bRows] = await db.query('SELECT branch_id FROM BRANCH WHERE company_id = ? LIMIT 1', [u.company_id]);
         if (bRows.length > 0) branchId = bRows[0].branch_id;
@@ -326,6 +327,16 @@ async function ensureAdminEmployeeRecords() {
          WHERE e.user_id IS NULL AND e.email IS NOT NULL AND e.email != ''`
       );
     } catch (_) {}
+
+    // Synchronize company_id between USER and EMPLOYEE to guarantee multi-tenant company isolation
+    try {
+      await db.query(
+        `UPDATE EMPLOYEE e
+         JOIN USER u ON e.user_id = u.user_id
+         SET e.company_id = u.company_id
+         WHERE u.company_id IS NOT NULL AND (e.company_id IS NULL OR e.company_id != u.company_id)`
+      );
+    } catch (_) {}
   } catch (err) {
     console.warn('[AutoSync] Error ensuring admin employee records:', err.message);
   }
@@ -339,8 +350,8 @@ exports.getEmployees = async (req, res) => {
     let whereClause = '';
     const params = [];
     if (companyId) {
-      whereClause = 'WHERE (e.company_id = ? OR b.company_id = ? OR u.company_id = ? OR d.company_id = ?)';
-      params.push(companyId, companyId, companyId, companyId);
+      whereClause = 'WHERE (e.company_id = ? OR (e.company_id IS NULL AND u.company_id = ?))';
+      params.push(companyId, companyId);
     } else {
       whereClause = 'WHERE 1 = 0';
     }
@@ -398,7 +409,7 @@ exports.getEmployees = async (req, res) => {
   exports.updateEmployeeRole = async (req, res) => {
     try {
       const { id } = req.params;
-      const { role_name } = req.body;
+      const { role_name, manager_module } = req.body;
 
       if (!role_name) {
         return res.status(400).json({ success: false, message: 'Role name is required.' });
@@ -410,13 +421,31 @@ exports.getEmployees = async (req, res) => {
 
       await db.query('UPDATE EMPLOYEE SET role = ? WHERE employee_id = ?', [role_name, id]);
 
-      const [empRows] = await db.query('SELECT user_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
+      const [empRows] = await db.query('SELECT user_id, department_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
       if (empRows.length > 0 && empRows[0].user_id) {
         const [roleRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [role_name]);
         if (roleRows.length > 0) {
           await db.query('UPDATE USER SET role_id = ? WHERE user_id = ?', [roleRows[0].role_id, empRows[0].user_id]);
         }
       }
+
+      // Automatically reset permissions to new role default
+      try {
+        let deptName = '';
+        if (empRows.length > 0 && empRows[0].department_id) {
+          const [dRows] = await db.query('SELECT name FROM DEPARTMENT WHERE department_id = ?', [empRows[0].department_id]);
+          if (dRows.length > 0) deptName = dRows[0].name;
+        }
+        const updatedPerms = getDefaultPermissions(role_name, deptName, manager_module);
+        for (const [permKey, isGranted] of Object.entries(updatedPerms)) {
+          await db.query(
+            `INSERT INTO EMPLOYEE_PERMISSION (employee_id, permission_key, is_granted)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted)`,
+            [id, permKey, isGranted ? 1 : 0]
+          );
+        }
+      } catch (_) {}
 
       return res.status(200).json({
         success: true,
@@ -436,7 +465,7 @@ exports.getEmployeeStats = async (req, res) => {
     let sql = "SELECT COUNT(*) as total FROM EMPLOYEE WHERE status = 'active'";
     const params = [];
     if (companyId) {
-      sql += ' AND (company_id = ? OR branch_id IN (SELECT branch_id FROM BRANCH WHERE company_id = ?))';
+      sql += ' AND (company_id = ? OR (company_id IS NULL AND user_id IN (SELECT user_id FROM USER WHERE company_id = ?)))';
       params.push(companyId, companyId);
     }
     const [result] = await db.query(sql, params);
@@ -1387,8 +1416,38 @@ exports.updateEmployeeStatus = async (req, res) => {
   exports.deleteEmployee = async (req, res) => {
     try {
       const { id } = req.params;
+
+      // Find associated user_id if any
+      const [empRows] = await db.query('SELECT user_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
+      const userId = empRows && empRows.length > 0 ? empRows[0].user_id : null;
+
+      // Clean up foreign key references in projects, tasks, attendance, leaves, timesheets, permissions, etc.
+      try { await db.query('UPDATE project SET project_leader_id = NULL WHERE project_leader_id = ?', [id]); } catch (_) {}
+      try { await db.query('UPDATE project SET head_user_id = NULL WHERE head_user_id = ?', [id]); } catch (_) {}
+      try { await db.query('UPDATE task SET assigned_to = NULL WHERE assigned_to = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM task_assignees WHERE employee_id = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM project_member WHERE employee_id = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM project_timesheet WHERE employee_id = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM EMPLOYEE_PERMISSION WHERE employee_id = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM LEAVE_REQUEST WHERE employee_id = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM ATTENDANCE WHERE employee_id = ?', [id]); } catch (_) {}
+      try { await db.query('DELETE FROM EMPLOYEE_INCREMENT WHERE employee_id = ?', [id]); } catch (_) {}
+
+      // Delete employee record
       await db.query('DELETE FROM EMPLOYEE WHERE employee_id = ?', [id]);
-      return res.status(200).json({ success: true, message: 'Employee record deleted.' });
+
+      // If there is an associated USER record, clean it up or deactivate it safely
+      if (userId) {
+        try {
+          await db.query('DELETE FROM USER WHERE user_id = ?', [userId]);
+        } catch (_) {
+          try {
+            await db.query('UPDATE USER SET is_active = 0 WHERE user_id = ?', [userId]);
+          } catch (_) {}
+        }
+      }
+
+      return res.status(200).json({ success: true, message: 'Employee record deleted successfully.' });
     } catch (error) {
       console.error('Delete Employee Error:', error);
       return res.status(500).json({ success: false, message: 'Database error', error: error.message });
@@ -1503,7 +1562,7 @@ exports.updateEmployeeStatus = async (req, res) => {
           d.name,
           COUNT(e.employee_id) as member_count
         FROM DEPARTMENT d
-        LEFT JOIN EMPLOYEE e ON d.department_id = e.department_id AND e.status = 'active'
+        LEFT JOIN EMPLOYEE e ON d.department_id = e.department_id AND (e.company_id = d.company_id OR e.company_id IS NULL) AND e.status = 'active'
         ${whereClause}
         GROUP BY d.department_id, d.company_id, d.name
         ORDER BY d.department_id ASC
@@ -2377,40 +2436,7 @@ exports.updateEmployeeStatus = async (req, res) => {
   };
 
 
-  // 2. UPDATE EMPLOYEE ROLE (Promote to Module Manager / Admin / Employee)
-  exports.updateEmployeeRole = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { role_name } = req.body;
-
-      if (!role_name) {
-        return res.status(400).json({ success: false, message: 'Role name is required.' });
-      }
-
-      try {
-        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN role VARCHAR(50) DEFAULT 'Employee'");
-      } catch (_) {}
-
-      await db.query('UPDATE EMPLOYEE SET role = ? WHERE employee_id = ?', [role_name, id]);
-
-      const [empRows] = await db.query('SELECT user_id FROM EMPLOYEE WHERE employee_id = ?', [id]);
-      if (empRows.length > 0 && empRows[0].user_id) {
-        const [roleRows] = await db.query('SELECT role_id FROM ROLE WHERE name = ? LIMIT 1', [role_name]);
-        if (roleRows.length > 0) {
-          await db.query('UPDATE USER SET role_id = ? WHERE user_id = ?', [roleRows[0].role_id, empRows[0].user_id]);
-        }
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: `Employee role updated to ${role_name} successfully!`,
-        role_name
-      });
-    } catch (error) {
-      console.error('Update Employee Role Error:', error);
-      return res.status(500).json({ success: false, message: 'Database error', error: error.message });
-    }
-  };
+  // 2. UPDATE EMPLOYEE ROLE (Promote to Module Manager / Admin / Employee) - Aliased above
 
 
 

@@ -164,6 +164,20 @@ exports.getTasks = async (req, res) => {
       params.push(project_id);
     }
 
+    // Strict self-assigned / private task privacy:
+    // If a task is marked private (is_private = 1), it is STRICTLY visible ONLY to the assigned employee!
+    // Admin, Managers, and Project Leaders CANNOT see other people's private tasks!
+    whereConditions.push(`(
+      (t.is_private = 0 OR t.is_private IS NULL)
+      OR (
+        ? IS NOT NULL AND (
+          t.assigned_to = ?
+          OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.task_id AND ta.employee_id = ?)
+        )
+      )
+    )`);
+    params.push(empId, empId, empId);
+
     // Agar filtering requested hai aur non-super-admin employee hai
     if (isFilteringRequested && !isSuperAdmin) {
       if (empId) {
@@ -173,7 +187,6 @@ exports.getTasks = async (req, res) => {
             OR EXISTS (
               SELECT 1 FROM project_member pm
               WHERE pm.project_id = t.project_id AND pm.employee_id = ?
-              AND (t.is_private = 0 OR t.is_private IS NULL)
             )
             OR EXISTS (
               SELECT 1 FROM project pr

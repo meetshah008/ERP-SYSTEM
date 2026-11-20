@@ -1,9 +1,10 @@
 /**
  * Role-Based Default Permission Presets
  */
-function getDefaultPermissions(roleName = 'Employee', deptName = '') {
+function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModule = '') {
   const normRole = (roleName || '').trim().toLowerCase();
   const normDept = (deptName || '').trim().toLowerCase();
+  const normMod = (managerModule || '').trim().toLowerCase();
   const isSuperAdmin = normRole.includes('admin') || normRole.includes('executive');
   const isManager = !isSuperAdmin && (normRole.includes('manager') || normRole.includes('supervisor'));
 
@@ -39,51 +40,62 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '') {
     };
   }
 
-  // 2. MODULE MANAGER (Full Privileges for Assigned Department / Module)
+  // 2. MODULE MANAGER (Supervisor for a SPECIFIC Chosen Module)
   if (isManager) {
-    const isHR = normDept.includes('hr') || normDept.includes('human') || normDept.includes('personnel');
-    const isProjects = normDept.includes('it') || normDept.includes('tech') || normDept.includes('eng') || normDept.includes('project') || normDept.includes('soft');
-    const isInventory = normDept.includes('invent') || normDept.includes('store') || normDept.includes('ware') || normDept.includes('stock');
-    const isManufacturing = normDept.includes('manuf') || normDept.includes('prod') || normDept.includes('plant') || normDept.includes('operat');
-    const isFinance = normDept.includes('fin') || normDept.includes('acc') || normDept.includes('bill') || normDept.includes('pay');
+    // Determine which module this manager oversees
+    let mod = normMod;
+    if (!mod) {
+      if (normDept.includes('hr') || normDept.includes('human') || normDept.includes('personnel')) mod = 'hr';
+      else if (normDept.includes('it') || normDept.includes('tech') || normDept.includes('eng') || normDept.includes('project') || normDept.includes('soft')) mod = 'projects';
+      else if (normDept.includes('invent') || normDept.includes('store') || normDept.includes('ware') || normDept.includes('stock')) mod = 'inventory';
+      else if (normDept.includes('manuf') || normDept.includes('prod') || normDept.includes('plant') || normDept.includes('operat')) mod = 'manufacturing';
+      else if (normDept.includes('fin') || normDept.includes('acc') || normDept.includes('bill') || normDept.includes('pay')) mod = 'finance';
+      else mod = 'hr';
+    }
+
+    const isHR = mod === 'hr';
+    const isProjects = mod === 'projects';
+    const isInventory = mod === 'inventory';
+    const isManufacturing = mod === 'manufacturing';
+    const isFinance = mod === 'finance';
 
     return {
       // General Common Base for Managers
-      hr_view_directory: true,
-      attendance_view_logs: true,
       leaves_apply: true,
-      leaves_approve: true,
-      tasks_view: true,
       tasks_create_self: true,
       tasks_log_timesheet: true,
 
       // HR Module:
-      hr_manage_staff: isHR || (!isProjects && !isInventory && !isManufacturing && !isFinance),
-      hr_view_lifecycle: isHR || (!isProjects && !isInventory && !isManufacturing && !isFinance),
-      attendance_import_excel: isHR || (!isProjects && !isInventory && !isManufacturing && !isFinance),
-      attendance_biometric_manage: isHR || (!isProjects && !isInventory && !isManufacturing && !isFinance),
+      hr_view_directory: isHR,
+      hr_manage_staff: isHR,
+      hr_view_lifecycle: isHR,
+      attendance_view_logs: isHR,
+      attendance_import_excel: isHR,
+      attendance_biometric_manage: isHR,
+      leaves_approve: isHR,
       hr_manage_departments: false, // Super Admin only
       attendance_override: false,   // Super Admin only
 
       // Projects & Tasks Module:
-      projects_create: isProjects || (!isHR && !isInventory && !isManufacturing && !isFinance),
-      projects_edit: isProjects || (!isHR && !isInventory && !isManufacturing && !isFinance),
+      tasks_view: isProjects,
+      projects_create: isProjects,
+      projects_edit: isProjects,
       projects_delete: false,       // Super Admin only
-      tasks_create_assign: isProjects || (!isHR && !isInventory && !isManufacturing && !isFinance),
-      tasks_edit: isProjects || (!isHR && !isInventory && !isManufacturing && !isFinance),
+      tasks_create_assign: isProjects,
+      tasks_edit: isProjects,
       tasks_delete: false,          // Super Admin only
 
       // Inventory Module:
-      inventory_view_stock: isInventory || isManufacturing || (!isHR && !isFinance),
-      inventory_manage_material: isInventory || (!isHR && !isProjects && !isFinance),
+      inventory_view_stock: isInventory || isManufacturing,
+      inventory_manage_material: isInventory,
 
       // Manufacturing Module:
-      manufacturing_view_bom: isManufacturing || isInventory || (!isHR && !isFinance),
-      manufacturing_work_orders: isManufacturing || (!isHR && !isProjects && !isInventory && !isFinance),
+      manufacturing_view_bom: isManufacturing,
+      manufacturing_work_orders: isManufacturing,
 
       // Finance & Appraisal Module:
       finance_view_reports: isFinance,
-      salary_manage_increment: isFinance || isHR,
+      salary_manage_increment: isFinance,
 
       // System Security
       system_audit_logs: false
