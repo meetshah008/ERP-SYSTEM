@@ -1,6 +1,7 @@
 const db = require('../../config/db');
 const xlsx = require('xlsx');
 const { resolveCompanyId } = require('../../utils/tenant');
+const { getDefaultPermissions } = require('../../utils/permissions');
 
 // Ensure error_logs column exists in ATTENDANCE_IMPORT
 (async () => {
@@ -228,6 +229,37 @@ exports.addEmployee = async (req, res) => {
       } catch (loginErr) {
         console.error('Failed to create login account during onboarding:', loginErr);
       }
+    }
+
+    // Auto-populate initial filtered permissions based on role & department!
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS EMPLOYEE_PERMISSION (
+          employee_id INT NOT NULL,
+          permission_key VARCHAR(60) NOT NULL,
+          is_granted TINYINT(1) DEFAULT 1,
+          PRIMARY KEY (employee_id, permission_key),
+          CONSTRAINT fk_emp_perm FOREIGN KEY (employee_id) REFERENCES EMPLOYEE(employee_id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      let deptName = '';
+      try {
+        const [dRows] = await db.query('SELECT name FROM DEPARTMENT WHERE department_id = ?', [department_id]);
+        if (dRows.length > 0) deptName = dRows[0].name;
+      } catch (_) {}
+
+      const initialPerms = getDefaultPermissions(login_role || role || 'Employee', deptName);
+      for (const [permKey, isGranted] of Object.entries(initialPerms)) {
+        await db.query(
+          `INSERT INTO EMPLOYEE_PERMISSION (employee_id, permission_key, is_granted)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted)`,
+          [newEmpId, permKey, isGranted ? 1 : 0]
+        );
+      }
+    } catch (permErr) {
+      console.error('Failed to populate initial permissions on onboarding:', permErr);
     }
 
     return res.status(201).json({
@@ -1659,38 +1691,8 @@ exports.updateEmployeeStatus = async (req, res) => {
         }
       } catch (_) {}
 
-      // Default permissions based on role
-      const isSuperAdmin = emp.role_name === 'Super Admin';
-      const isManager = isSuperAdmin || emp.role_name === 'Module Manager';
-
-      const defaultPermissions = {
-        'hr_view_directory': true,
-        'hr_manage_staff': isManager,
-        'hr_manage_departments': isSuperAdmin,
-        'hr_view_lifecycle': isSuperAdmin,
-        'attendance_view_logs': true,
-        'attendance_import_excel': isManager,
-        'attendance_override': isSuperAdmin,
-        'attendance_biometric_manage': isManager,
-        'salary_manage_increment': isSuperAdmin,
-        'leaves_apply': true,
-        'leaves_approve': isManager,
-        'tasks_view': true,
-        'tasks_create_assign': isManager,
-        'tasks_edit': isManager,
-        'tasks_delete': isSuperAdmin,
-        'projects_create': isManager,
-        'projects_edit': isManager,
-        'projects_delete': isSuperAdmin,
-        'tasks_log_timesheet': true,
-        'inventory_view_stock': true,
-        'inventory_manage_material': isManager,
-        'manufacturing_view_bom': true,
-        'manufacturing_work_orders': isManager,
-        'finance_view_reports': isSuperAdmin,
-        'system_audit_logs': isSuperAdmin
-      };
-
+      // Default permissions based on role & department
+      const defaultPermissions = getDefaultPermissions(emp.role_name || emp.role, emp.department_name || '');
       const mergedPermissions = { ...defaultPermissions, ...customPermissions };
 
       // 3. Recent Attendance (Last 10 records)
@@ -1786,7 +1788,17 @@ exports.updateEmployeeStatus = async (req, res) => {
   exports.updateEmployeePermissions = async (req, res) => {
     try {
       const { id } = req.params;
-      const { permissions, role_id, role_name, user_active } = req.body;
+      const { permissions, role_id, role_name, user_active, caller_role } = req.body;
+
+      // Only Super Admin can modify employee permissions
+      const effectiveRole = req.user?.role || req.user?.role_name || caller_role;
+      const isSuperAdmin = effectiveRole === 'Super Admin' || effectiveRole === 'Admin' || effectiveRole === 'admin';
+      if (!isSuperAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access Denied: Only Super Admin can modify system permissions!'
+        });
+      }
 
       if (!id) {
         return res.status(400).json({ success: false, message: 'Employee ID is required.' });

@@ -102,6 +102,10 @@ async function testConnection() {
       } catch (_) {}
     }
 
+    try {
+      await connection.query("ALTER TABLE task ADD COLUMN is_private TINYINT(1) DEFAULT 0");
+    } catch (_) {}
+
     console.log('✅ Master Database tables & columns verified!');
     connection.release();
   } catch (error) {

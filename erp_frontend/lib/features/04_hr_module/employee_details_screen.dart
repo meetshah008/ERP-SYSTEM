@@ -25,6 +25,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
   late TabController _tabController;
   bool _isLoading = true;
   bool _isSavingPermissions = false;
+  bool _isSuperAdmin = false;
   bool _canManageStaff = false;
   bool _canOverrideAttendance = false;
   Map<String, dynamic> _data = {};
@@ -78,7 +79,8 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
   Future<void> _checkUserPermissions() async {
     final session = await SessionManager.getUserSession();
-    final isSuper = session['role'] == 'Super Admin';
+    final isSuper = session['role'] == 'Super Admin' || session['role_name'] == 'Super Admin';
+    _isSuperAdmin = isSuper;
     final allowed =
         isSuper || await SessionManager.hasPermission('hr_manage_staff');
     final allowedOverride =
@@ -501,6 +503,15 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
   // 2. Save Permissions & Roles
   Future<void> _savePermissions() async {
+    if (!_isSuperAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Access Denied: Only Super Admin can modify system permissions!'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
     setState(() => _isSavingPermissions = true);
     try {
       final res = await ApiClient.put(
@@ -3443,6 +3454,13 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
               textSub,
             ),
             _buildPermissionSwitch(
+              'tasks_create_self',
+              'Create Self Personal Tasks',
+              'Create private tasks inside projects visible only to self & leader',
+              textTitle,
+              textSub,
+            ),
+            _buildPermissionSwitch(
               'tasks_edit',
               'Edit Tasks',
               'Update task title, description & priority',
@@ -3555,9 +3573,33 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                     fontSize: 13,
                   ),
                 ),
-                onPressed: _isSavingPermissions ? null : _savePermissions,
+                onPressed: (_isSavingPermissions || !_isSuperAdmin) ? null : _savePermissions,
               ),
             ),
+            if (!_isSuperAdmin) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lock_outline_rounded, size: 16, color: Colors.amber),
+                      SizedBox(width: 6),
+                      Text(
+                        'Only Super Admin can modify system permissions',
+                        style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ],
@@ -5160,7 +5202,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
           Switch(
             value: isAllowed,
             activeColor: const Color(0xFF059669),
-            onChanged: _canManageStaff
+            onChanged: _isSuperAdmin
                 ? (val) {
                     setState(() {
                       _permissions[key] = val;

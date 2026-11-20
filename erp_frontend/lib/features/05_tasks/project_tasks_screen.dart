@@ -114,7 +114,9 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     final canEditPrj = isSuperAdmin || await SessionManager.hasPermission('projects_edit');
     final canDeletePrj = isSuperAdmin || await SessionManager.hasPermission('projects_delete');
 
-    final canCreateTsk = isSuperAdmin || await SessionManager.hasPermission('tasks_create_assign');
+    final canCreateTsk = isSuperAdmin ||
+        await SessionManager.hasPermission('tasks_create_assign') ||
+        await SessionManager.hasPermission('tasks_create_self');
     final canEditTsk = isSuperAdmin || await SessionManager.hasPermission('tasks_edit');
     final canDeleteTsk = isSuperAdmin || await SessionManager.hasPermission('tasks_delete');
 

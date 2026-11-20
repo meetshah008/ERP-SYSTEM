@@ -1,6 +1,7 @@
 const db = require('../../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getDefaultPermissions } = require('../../utils/permissions');
 
 // 1. REGISTER COMPANY (First-Time Setup Wizard)
 exports.registerCompany = async (req, res) => {
@@ -183,70 +184,30 @@ exports.login = async (req, res) => {
     );
         // ================= FETCH USER PERMISSIONS =================
         let permissions = {};
+        let deptName = '';
+        let empId = null;
+
+        try {
+          const [empRows] = await db.query(
+            `SELECT e.employee_id, d.name as department_name 
+             FROM EMPLOYEE e 
+             LEFT JOIN DEPARTMENT d ON e.department_id = d.department_id 
+             WHERE e.user_id = ?`,
+            [user.user_id]
+          );
+          if (empRows.length > 0) {
+            empId = empRows[0].employee_id;
+            deptName = empRows[0].department_name || '';
+          }
+        } catch (_) {}
+
+        const defaultPermissions = getDefaultPermissions(user.role_name, deptName);
+
         if (user.role_name === 'Super Admin') {
-          // Super Admin ke paas har chiz ka full access hota hai
-          permissions = {
-            hr_view_directory: true,
-            hr_manage_staff: true,
-            hr_manage_departments: true,
-            attendance_view_logs: true,
-            attendance_import_excel: true,
-            attendance_override: true,
-            leaves_apply: true,
-            leaves_approve: true,
-            tasks_view: true,
-            tasks_create_assign: true,
-        tasks_edit: true,
-        tasks_delete: true,
-        projects_create: true,
-        projects_edit: true,
-        projects_delete: true,
-            tasks_log_timesheet: true,
-            inventory_view_stock: true,
-            inventory_manage_material: true,
-            manufacturing_view_bom: true,
-            manufacturing_work_orders: true,
-            finance_view_reports: true,
-            system_audit_logs: true
-          };
+          permissions = defaultPermissions;
         } else {
-          // Non-admin ke default permissions
-          const isManager = user.role_name === 'Module Manager';
-          const defaultPermissions = {
-            hr_view_directory: true,
-            hr_manage_staff: isManager,
-            hr_manage_departments: false,
-            attendance_view_logs: true,
-            attendance_import_excel: isManager,
-            attendance_override: false,
-            leaves_apply: true,
-            leaves_approve: isManager,
-            tasks_view: true,
-            tasks_create_assign: isManager,
-        tasks_edit: isManager,
-        tasks_delete: false,
-        projects_create: isManager,
-        projects_edit: isManager,
-        projects_delete: false,
-            tasks_log_timesheet: true,
-            inventory_view_stock: true,
-            inventory_manage_material: isManager,
-            manufacturing_view_bom: true,
-            manufacturing_work_orders: isManager,
-            finance_view_reports: false,
-            system_audit_logs: false
-          };
-
           try {
-            // Dekho ki kya is user ka koi employee record linked hai
-            const [empRows] = await db.query(
-              'SELECT employee_id FROM EMPLOYEE WHERE user_id = ?',
-              [user.user_id]
-            );
-
-            if (empRows.length > 0) {
-              const empId = empRows[0].employee_id;
-              // EMPLOYEE_PERMISSION table se saved toggles uthao
+            if (empId) {
               const [permRows] = await db.query(
                 'SELECT permission_key, is_granted FROM EMPLOYEE_PERMISSION WHERE employee_id = ?',
                 [empId]

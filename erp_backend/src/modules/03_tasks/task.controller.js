@@ -31,7 +31,7 @@ const sendNotification = async ({ companyId = 1, title, message, type, reference
 // 1. NAYA TASK ASSIGN KARNA (General ya Project Task - Supports Single or Multiple Assignees)
 exports.createTask = async (req, res) => {
   try {
-    const { assigned_to, assignees, title, description, priority, status, due_date, project_id, estimated_hours, subtasks } = req.body;
+    const { assigned_to, assignees, title, description, priority, status, due_date, project_id, estimated_hours, subtasks, is_private } = req.body;
 
     // Handle multiple assignees or single assigned_to
     let assigneeList = [];
@@ -56,9 +56,9 @@ exports.createTask = async (req, res) => {
     effCompanyId = effCompanyId || 1;
 
     const [result] = await db.query(
-      `INSERT INTO task (company_id, assigned_to, project_id, title, description, priority, status, due_date, estimated_hours)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [effCompanyId, primaryAssignee, project_id || null, title, description || '', priority || 'MEDIUM', status || 'TODO', due_date || null, estimated_hours || 0]
+      `INSERT INTO task (company_id, assigned_to, project_id, title, description, priority, status, due_date, estimated_hours, is_private)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [effCompanyId, primaryAssignee, project_id || null, title, description || '', priority || 'MEDIUM', status || 'TODO', due_date || null, estimated_hours || 0, is_private ? 1 : 0]
     );
 
     const taskId = result.insertId;
@@ -173,6 +173,7 @@ exports.getTasks = async (req, res) => {
             OR EXISTS (
               SELECT 1 FROM project_member pm
               WHERE pm.project_id = t.project_id AND pm.employee_id = ?
+              AND (t.is_private = 0 OR t.is_private IS NULL)
             )
             OR EXISTS (
               SELECT 1 FROM project pr

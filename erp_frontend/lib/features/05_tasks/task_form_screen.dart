@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/session_manager.dart';
 import '../../core/widgets/botanical_background.dart';
 
 class TaskFormScreen extends StatefulWidget {
@@ -56,6 +57,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   List<dynamic> _availableWorkers = [];
   bool _isLoadingProjectMembers = false;
+  bool _canAssignOthers = true;
+  bool _isPrivateTask = false;
+  int? _currentEmployeeId;
 
   bool get isEdit => widget.task != null;
 
@@ -127,6 +131,34 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _initFormContext() async {
+    try {
+      final session = await SessionManager.getUserSession();
+      final isSuper = session['role'] == 'Super Admin' || session['role_name'] == 'Super Admin';
+      final hasAssign = isSuper || await SessionManager.hasPermission('tasks_create_assign');
+      _canAssignOthers = hasAssign;
+
+      final empIdStr = session['employee_id']?.toString() ?? session['employeeId']?.toString();
+      if (empIdStr != null) {
+        _currentEmployeeId = int.tryParse(empIdStr);
+      }
+      if (_currentEmployeeId == null && session['userId'] != null) {
+        for (final e in widget.employees) {
+          if (e['user_id'] == session['userId']) {
+            _currentEmployeeId = int.tryParse(e['employee_id'].toString());
+            break;
+          }
+        }
+      }
+
+      if (!_canAssignOthers) {
+        _isPrivateTask = true;
+        if (!isEdit && _currentEmployeeId != null) {
+          _selectedAssigneeIds.clear();
+          _selectedAssigneeIds.add(_currentEmployeeId!);
+        }
+      }
+    } catch (_) {}
+
     await _fetchDepartments();
     await _loadProjectContext(_selectedProjectId, isInitial: true);
   }
@@ -269,6 +301,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   void _ensureValidAssignees() {
+    if (!_canAssignOthers && _currentEmployeeId != null) {
+      _selectedAssigneeIds.clear();
+      _selectedAssigneeIds.add(_currentEmployeeId!);
+      return;
+    }
+
     if (isEdit) {
       if (_selectedAssigneeIds.isEmpty && _availableWorkers.isNotEmpty) {
         final firstId = int.tryParse(_availableWorkers.first['employee_id']?.toString() ?? '');
@@ -444,6 +482,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             'status': _selectedStatus,
             'due_date': dueDateStr,
             'estimated_hours': hours,
+            'is_private': _isPrivateTask ? 1 : 0,
             'subtasks': subtasks,
           }),
         );
@@ -956,7 +995,27 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                   Row(
                                     children: [
                                       _buildLabel('Assigned Workers (${_selectedAssigneeIds.length}) *', isDark),
-                                      if (_selectedProjectId != null) ...[
+                                      if (!_canAssignOthers) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.lock_rounded, size: 10, color: Colors.blue),
+                                              SizedBox(width: 4),
+                                              Text(
+                                                'Self Personal Task',
+                                                style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ] else if (_selectedProjectId != null) ...[
                                         const SizedBox(width: 6),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -977,7 +1036,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                           height: 14,
                                           child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF10B981)),
                                         )
-                                      else if (_availableWorkers.isNotEmpty)
+                                      else if (_canAssignOthers && _availableWorkers.isNotEmpty)
                                         PopupMenuButton<int>(
                                           tooltip: 'Add Worker',
                                           icon: Container(
@@ -1099,14 +1158,16 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                                 '$name (${emp['emp_code'] ?? 'EMP'})',
                                                 style: TextStyle(color: textTitle, fontSize: 12, fontWeight: FontWeight.w600),
                                               ),
-                                              const SizedBox(width: 6),
-                                              InkWell(
-                                                onTap: () {
-                                                  setState(() => _selectedAssigneeIds.remove(empId));
-                                                },
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: Icon(Icons.close_rounded, size: 14, color: textSub),
-                                              ),
+                                              if (_canAssignOthers && _selectedAssigneeIds.length > 1) ...[
+                                                const SizedBox(width: 6),
+                                                InkWell(
+                                                  onTap: () {
+                                                    setState(() => _selectedAssigneeIds.remove(empId));
+                                                  },
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  child: Icon(Icons.close_rounded, size: 14, color: textSub),
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         );
