@@ -79,7 +79,8 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
   Future<void> _checkUserPermissions() async {
     final session = await SessionManager.getUserSession();
-    final isSuper = session['role'] == 'Super Admin' || session['role_name'] == 'Super Admin';
+    final roleStr = (session['role'] ?? session['role_name'] ?? '').toString().toLowerCase();
+    final isSuper = roleStr.contains('admin') || roleStr.contains('executive');
     _isSuperAdmin = isSuper;
     final allowed =
         isSuper || await SessionManager.hasPermission('hr_manage_staff');
@@ -503,7 +504,10 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
 
   // 2. Save Permissions & Roles
   Future<void> _savePermissions() async {
-    if (!_isSuperAdmin) {
+    final session = await SessionManager.getUserSession();
+    final roleStr = (session['role'] ?? session['role_name'] ?? '').toString().toLowerCase();
+    final isSuper = roleStr.contains('admin') || roleStr.contains('executive');
+    if (!isSuper && !_isSuperAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Access Denied: Only Super Admin can modify system permissions!'),
@@ -523,6 +527,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
           'permissions': _permissions,
           'user_active': _userActive,
           'role_name': _selectedRole,
+          'caller_role': session['role'] ?? session['role_name'] ?? 'Super Admin',
         }),
       );
 

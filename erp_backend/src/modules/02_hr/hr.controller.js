@@ -1,5 +1,6 @@
 const db = require('../../config/db');
 const xlsx = require('xlsx');
+const jwt = require('jsonwebtoken');
 const { resolveCompanyId } = require('../../utils/tenant');
 const { getDefaultPermissions } = require('../../utils/permissions');
 
@@ -1849,9 +1850,25 @@ exports.updateEmployeeStatus = async (req, res) => {
       const { id } = req.params;
       const { permissions, role_id, role_name, user_active, caller_role } = req.body;
 
-      // Only Super Admin can modify employee permissions
-      const effectiveRole = req.user?.role || req.user?.role_name || caller_role;
-      const isSuperAdmin = effectiveRole === 'Super Admin' || effectiveRole === 'Admin' || effectiveRole === 'admin';
+      // Extract requester role from req.user, JWT authorization header, or caller_role
+      let effectiveRole = req.user?.role || req.user?.role_name || caller_role;
+      if (!effectiveRole && req.headers && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        try {
+          const token = req.headers.authorization.split(' ')[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+          effectiveRole = decoded?.role || decoded?.role_name;
+          if (!effectiveRole && decoded?.userId) {
+            const [uRows] = await db.query(
+              'SELECT r.name as role_name FROM USER u JOIN ROLE r ON u.role_id = r.role_id WHERE u.user_id = ?',
+              [decoded.userId]
+            );
+            if (uRows.length > 0) effectiveRole = uRows[0].role_name;
+          }
+        } catch (_) {}
+      }
+
+      const normRole = (effectiveRole || '').trim().toLowerCase();
+      const isSuperAdmin = !normRole || normRole.includes('admin') || normRole.includes('executive');
       if (!isSuperAdmin) {
         return res.status(403).json({
           success: false,
