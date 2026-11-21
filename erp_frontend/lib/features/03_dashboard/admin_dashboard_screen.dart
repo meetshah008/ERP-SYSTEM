@@ -73,7 +73,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   int _unreadNotifCount = 0;
   List<dynamic> _notifications = [];
   Timer? _notifTimer;
-  final FocusNode _desktopSearchFocus = FocusNode();
 
   // 🔐 Permissions Map (Logged-in user ke allowed/denied features)
   Map<String, bool> _permissions = {};
@@ -1288,12 +1287,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // ================= 3. DESKTOP HEADER =================
   Widget _buildDesktopHeader(bool isDark) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    // Keep the header uncluttered at 900–1119px; show the ⌘K search on wide
-    // desktop only. This method is desktop-only, so mobile is unaffected.
-    final showSearch = screenWidth >= 1120;
-
-    final header = Container(
+    return Container(
       height: 68,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
@@ -1317,40 +1311,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
           const Spacer(),
-          if (showSearch)
-            SizedBox(
-              width: 300,
-              child: TextField(
-                focusNode: _desktopSearchFocus,
-                decoration: EnterpriseTheme.input(
-                  hint: 'Search modules, people, tasks…',
-                  label: '',
-                ),
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: isDark ? Colors.white : EnterpriseColors.textPrimary,
-                ),
-                onSubmitted: (_) => _desktopSearchFocus.unfocus(),
-              ),
-            ),
-          if (showSearch) const SizedBox(width: 16),
           // 🔔 Live Notification Bell (with unread badge)
           _buildNotificationBell(isDark),
-          const SizedBox(width: 16),
+          const SizedBox(width: 145), // Space for the theme toggle pill
         ],
       ),
-    );
-
-    void focusSearch() {
-      if (showSearch) _desktopSearchFocus.requestFocus();
-    }
-
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        SingleActivator(LogicalKeyboardKey.keyK, meta: true): focusSearch,
-        SingleActivator(LogicalKeyboardKey.keyK, control: true): focusSearch,
-      },
-      child: header,
     );
   }
 
@@ -5946,7 +5911,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void dispose() {
     _notifTimer?.cancel();
     _tabBlurController.dispose();
-    _desktopSearchFocus.dispose();
     super.dispose();
   }
 }

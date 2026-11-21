@@ -309,6 +309,8 @@ abstract final class AppNavCatalog {
           label: 'Settings & Logs',
           icon: Icons.settings_outlined,
           module: AppNavModule.system,
+          // Settings is a personal workspace screen (theme, profile, logout),
+          // so it stays visible to every role.
           permissionKey: null,
           targetMenu: 'Settings & Logs',
         ),

@@ -48,7 +48,8 @@ void main() {
       expect(visible, isNot(contains('Department Management')));
       expect(visible, isNot(contains('Payroll & Increments')));
       expect(visible, isNot(contains('Accounts & Finance')));
-      expect(groups.map((g) => g.id), equals(['general', 'hr']));
+      // Settings & Logs is a personal workspace item, visible to every role.
+      expect(groups.map((g) => g.id), equals(['general', 'hr', 'system']));
     });
 
     test('revoking a permission removes its item, granting one adds it', () {
@@ -103,7 +104,7 @@ void main() {
       expect(visible, isNot(contains('Employee Lifecycle')));
       expect(visible, isNot(contains('Leave Approvals')));
       expect(visible, isNot(contains('Department Management')));
-      expect(visible, isNot(contains('Settings & Logs')));
+      expect(visible, contains('Settings & Logs'));
       expect(visible, isNot(contains('Timesheets')));
       expect(visible, isNot(contains('Attendance Override')));
       expect(visible, isNot(contains('Advanced Biometric Tools')));
