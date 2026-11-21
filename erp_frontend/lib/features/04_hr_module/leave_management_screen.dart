@@ -667,7 +667,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
     final cardBorder = isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.75);
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: Column(

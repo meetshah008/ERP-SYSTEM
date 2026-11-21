@@ -520,7 +520,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
           : null,
       body: isMobile
           ? mainContent
-          : BotanicalBackground(
+          : BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: mainContent,
       ),

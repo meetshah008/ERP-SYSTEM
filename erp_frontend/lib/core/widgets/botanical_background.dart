@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import '../theme/enterprise_theme.dart';
 import '../theme/theme_controller.dart';
 
-/// A pure procedural tropical botanical background that supports both
-/// luxurious Dark Forest mode and Fresh Clean Light Mint mode.
+/// A procedural botanical background for the legacy look.
+///
+/// Pass [cleanDesktop] = true from desktop/web screens to get the flat
+/// enterprise canvas (#f8fafc) instead. The mobile canvas (width < 720)
+/// is never affected by that flag.
 class BotanicalBackground extends StatefulWidget {
   final Widget child;
   final bool showThemeToggle;
+
+  /// Desktop-only clean canvas. Mobile UI stays exactly as before.
+  final bool cleanDesktop;
 
   const BotanicalBackground({
     super.key,
     required this.child,
     this.showThemeToggle = true,
+    this.cleanDesktop = false,
   });
 
   @override
@@ -45,8 +53,71 @@ class _BotanicalBackgroundState extends State<BotanicalBackground> {
                 pointer: _pointer,
                 child: widget.child,
               )
-            : _buildDesktopCanvas(),
+            : widget.cleanDesktop
+                ? _buildCleanDesktopCanvas()
+                : _buildDesktopCanvas(),
       ),
+    );
+  }
+
+  /// Flat, texture-free canvas for the clean enterprise desktop theme.
+  Widget _buildCleanDesktopCanvas() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: ThemeController.isDarkMode,
+      builder: (context, isDark, _) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: ColoredBox(
+                color: isDark ? EnterpriseColors.sidebarDeep : EnterpriseColors.canvas,
+              ),
+            ),
+            Positioned.fill(child: widget.child),
+            if (widget.showThemeToggle)
+              Positioned(
+                top: 24,
+                right: 28,
+                child: SafeArea(
+                  child: InkWell(
+                    borderRadius:
+                        BorderRadius.circular(EnterpriseRadius.md),
+                    onTap: ThemeController.toggleTheme,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: EnterpriseTheme.card(
+                        radius: EnterpriseRadius.md,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isDark
+                                ? Icons.light_mode_rounded
+                                : Icons.dark_mode_rounded,
+                            size: 16,
+                            color: EnterpriseColors.emerald,
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            isDark ? 'Light Mode' : 'Dark Mode',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? Colors.white
+                                  : EnterpriseColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 

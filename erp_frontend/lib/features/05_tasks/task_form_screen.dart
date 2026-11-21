@@ -1484,7 +1484,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     }
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: mainContent,
       ),

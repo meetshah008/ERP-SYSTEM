@@ -11,6 +11,7 @@ import 'task_details_screen.dart';
 import 'project_edit_screen.dart';
 import 'task_form_screen.dart';
 import '../../core/network/session_manager.dart';
+import '../../core/theme/enterprise_theme.dart';
 
 class ProjectTasksScreen extends StatefulWidget {
   const ProjectTasksScreen({super.key, this.initialTopView = 0});
@@ -1367,10 +1368,25 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeController.isDarkMode.value;
-    final cardBg = isDark ? const Color(0xFF111113) : Colors.white;
-    final cardBorder = isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE2E8F0);
-    final textTitle = isDark ? Colors.white : const Color(0xFF0F172A);
-    final textSub = isDark ? Colors.white.withValues(alpha: 0.6) : const Color(0xFF334155);
+    // Desktop/web uses the clean enterprise palette. Mobile (<900) keeps its
+    // existing colors untouched.
+    final cleanDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final cardBg = cleanDesktop
+        ? (isDark ? EnterpriseColors.sidebarDeep : EnterpriseColors.surface)
+        : (isDark ? const Color(0xFF111113) : Colors.white);
+    final cardBorder = cleanDesktop
+        ? (isDark ? EnterpriseColors.sidebarHover : EnterpriseColors.border)
+        : (isDark
+            ? Colors.white.withValues(alpha: 0.12)
+            : const Color(0xFFE2E8F0));
+    final textTitle = isDark
+        ? Colors.white
+        : (cleanDesktop ? EnterpriseColors.textPrimary : const Color(0xFF0F172A));
+    final textSub = isDark
+        ? (cleanDesktop
+            ? EnterpriseColors.sidebarMuted
+            : Colors.white.withValues(alpha: 0.6))
+        : (cleanDesktop ? EnterpriseColors.textSecondary : const Color(0xFF334155));
 
     // AGAR KOI PROJECT KHULA HAI TOH USKA WORKSPACE DIKHAO
     if (_selectedProject != null) {
@@ -1582,12 +1598,12 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     final isSelected = _activeTopView == index;
     return InkWell(
       onTap: () => setState(() => _activeTopView = index),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(EnterpriseRadius.sm),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF10B981) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected ? EnterpriseColors.emerald : Colors.transparent,
+          borderRadius: BorderRadius.circular(EnterpriseRadius.sm),
         ),
         child: Row(
           children: [
@@ -3948,22 +3964,53 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   // Filter Chip Helper
   Widget _buildStatusFilterChip(String key, String label) {
     final isSelected = _selectedStatusFilter == key;
+    final isDark = ThemeController.isDarkMode.value;
+    final cleanDesktop = MediaQuery.sizeOf(context).width >= 900;
+
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
         label: Text(label),
         selected: isSelected,
         labelStyle: TextStyle(
-          color: isSelected ? Colors.white : Colors.grey,
+          color: cleanDesktop
+              ? (isDark
+                  ? (isSelected ? Colors.white : EnterpriseColors.sidebarMuted)
+                  : (isSelected
+                      ? EnterpriseColors.emeraldDeep
+                      : EnterpriseColors.textSecondary))
+              : (isSelected ? Colors.white : Colors.grey),
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           fontSize: 12,
         ),
-        backgroundColor: Colors.transparent,
-        selectedColor: const Color(0xFF10B981),
+        backgroundColor: cleanDesktop
+            ? (isDark
+                ? (isSelected
+                    ? EnterpriseColors.emeraldDeep
+                    : EnterpriseColors.sidebarDeep)
+                : (isSelected
+                    ? EnterpriseColors.emeraldSoft
+                    : EnterpriseColors.surface))
+            : Colors.transparent,
+        selectedColor: cleanDesktop
+            ? (isDark
+                ? EnterpriseColors.emeraldDeep
+                : EnterpriseColors.emeraldSoft)
+            : const Color(0xFF10B981),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(
+            cleanDesktop ? EnterpriseRadius.pill : 10,
+          ),
           side: BorderSide(
-            color: isSelected ? const Color(0xFF10B981) : Colors.grey.withValues(alpha: 0.3),
+            color: cleanDesktop
+                ? (isDark
+                    ? EnterpriseColors.sidebarHover
+                    : (isSelected
+                        ? EnterpriseColors.emeraldSoftBorder
+                        : EnterpriseColors.border))
+                : (isSelected
+                    ? const Color(0xFF10B981)
+                    : Colors.grey.withValues(alpha: 0.3)),
           ),
         ),
         onSelected: (_) => setState(() => _selectedStatusFilter = key),
@@ -4023,7 +4070,6 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   }
 
   // TAB 4: Components / Materials
-  // TAB 4: Components / Materials
   Widget _buildProjectComponentsTab(Color cardBg, Color cardBorder, Color textTitle, Color textSub) {
     final prj = _selectedProject!;
     final materials = (_projectDetails?['materials'] as List<dynamic>?) ?? [];
@@ -4051,7 +4097,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                 ),
                 onPressed: () => _openAddComponentDialog(prj['project_id']),
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('+ Add Component', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const Text(' Add Component', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ],
           ),

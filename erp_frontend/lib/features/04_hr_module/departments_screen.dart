@@ -628,7 +628,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
             .reduce((a, b) => a > b ? a : b);
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: LayoutBuilder(

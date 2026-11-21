@@ -269,7 +269,7 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
     final skipCount = _consoleLogs.where((l) => l.contains('[SKIP]')).length;
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: Column(

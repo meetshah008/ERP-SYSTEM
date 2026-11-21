@@ -456,7 +456,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen> {
     final managerCount = _deptEmployees.where((e) => (e['role_name'] ?? e['role'] ?? '').toString().toLowerCase().contains('manager')).length;
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: Column(

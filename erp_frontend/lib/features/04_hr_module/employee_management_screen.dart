@@ -838,7 +838,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     final cardBorder = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7);
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: CustomScrollView(

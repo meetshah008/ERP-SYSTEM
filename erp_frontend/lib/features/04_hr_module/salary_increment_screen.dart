@@ -241,7 +241,7 @@ class _SalaryIncrementScreenState extends State<SalaryIncrementScreen> {
     final subtextColor = isDark ? Colors.white70 : const Color(0xFF64748B);
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: Column(

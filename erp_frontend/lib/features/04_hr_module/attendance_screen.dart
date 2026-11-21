@@ -808,7 +808,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final totalHalfDay = _filteredRecords.where((r) => r['status'] == 'Half-Day').length;
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: Column(

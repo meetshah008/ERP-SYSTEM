@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import '../../core/widgets/expandable_nav_bar.dart';  // <-- Add this
 import '../../core/navigation/app_navigation.dart';
 import '../../core/widgets/permission_sidebar.dart';
+import '../../core/theme/enterprise_theme.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final String companyName;
@@ -72,6 +73,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   int _unreadNotifCount = 0;
   List<dynamic> _notifications = [];
   Timer? _notifTimer;
+  final FocusNode _desktopSearchFocus = FocusNode();
 
   // 🔐 Permissions Map (Logged-in user ke allowed/denied features)
   Map<String, bool> _permissions = {};
@@ -715,6 +717,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       builder: (context, isDark, _) {
         final body = BotanicalBackground(
           showThemeToggle: isDesktop,
+          cleanDesktop: isDesktop,
           child: Column(
             children: [
               // Mobile top bar for every tab except the dashboard (which
@@ -1101,17 +1104,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  // ================= 2. DESKTOP FROSTED SIDEBAR =================
+  // ================= 2. DESKTOP OBSIDIAN SIDEBAR =================
   Widget _buildDesktopSidebar() {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF030D08).withValues(alpha: 0.75),
-            border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+    return Container(
+          decoration: const BoxDecoration(
+            color: EnterpriseColors.sidebar,
+            border: Border(
+              right: BorderSide(
+                color: EnterpriseColors.sidebarDeep,
+                width: 1,
+              ),
+            ),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1124,12 +1129,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
+                      borderRadius: BorderRadius.circular(EnterpriseRadius.md),
+                      boxShadow: const [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
+                          color: Color(0x26000000),
                           blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          offset: Offset(0, 2),
                         ),
                       ],
                     ),
@@ -1154,7 +1159,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         ),
                         const Text(
                           'Plant Command Center',
-                          style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.w600),
+                          style: TextStyle(color: Color(0xFF34D399), fontSize: 10.5, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -1188,9 +1193,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  color: EnterpriseColors.sidebarDeep,
+                  borderRadius: BorderRadius.circular(EnterpriseRadius.lg),
+                  border: Border.all(color: EnterpriseColors.sidebarHover),
                 ),
                 child: Row(
                   children: [
@@ -1232,8 +1237,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
@@ -1247,26 +1250,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF059669).withValues(alpha: 0.2) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            color: isSelected
+                ? EnterpriseColors.emerald
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(EnterpriseRadius.md),
             border: Border.all(
-              color: isSelected ? const Color(0xFF10B981).withValues(alpha: 0.5) : Colors.transparent,
+              color: isSelected
+                  ? EnterpriseColors.emeraldDeep
+                  : Colors.transparent,
             ),
           ),
           child: Row(
             children: [
               Icon(
                 icon,
-                size: 20,
-                color: isSelected ? const Color(0xFF10B981) : Colors.white.withValues(alpha: 0.6),
+                size: 19,
+                color: isSelected
+                    ? Colors.white
+                    : EnterpriseColors.sidebarMuted,
               ),
               const SizedBox(width: 12),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7),
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? Colors.white
+                      : EnterpriseColors.sidebarMuted,
                 ),
               ),
             ],
@@ -1278,12 +1289,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // ================= 3. DESKTOP HEADER =================
   Widget _buildDesktopHeader(bool isDark) {
-    return Container(
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    // Keep the header uncluttered at 900–1119px; show the ⌘K search on wide
+    // desktop only. This method is desktop-only, so mobile is unaffected.
+    final showSearch = screenWidth >= 1120;
+
+    final header = Container(
       height: 68,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF030D08).withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.6),
-        border: Border(bottom: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0))),
+        color: isDark ? EnterpriseColors.sidebarDeep : EnterpriseColors.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? EnterpriseColors.sidebarHover
+                : EnterpriseColors.border,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -1292,15 +1314,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : const Color(0xFF0F172A),
+              color: isDark ? Colors.white : EnterpriseColors.textPrimary,
             ),
           ),
           const Spacer(),
+          if (showSearch)
+            SizedBox(
+              width: 300,
+              child: TextField(
+                focusNode: _desktopSearchFocus,
+                decoration: EnterpriseTheme.input(
+                  hint: 'Search modules, people, tasks…',
+                  label: '',
+                ),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: isDark ? Colors.white : EnterpriseColors.textPrimary,
+                ),
+                onSubmitted: (_) => _desktopSearchFocus.unfocus(),
+              ),
+            ),
+          if (showSearch) const SizedBox(width: 16),
           // 🔔 Live Notification Bell (with unread badge)
           _buildNotificationBell(isDark),
-          const SizedBox(width: 145), // Space for floating theme toggle pill
+          SizedBox(width: showSearch ? 16 : 145),
         ],
       ),
+    );
+
+    void focusSearch() {
+      if (showSearch) _desktopSearchFocus.requestFocus();
+    }
+
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        SingleActivator(LogicalKeyboardKey.keyK, meta: true): focusSearch,
+        SingleActivator(LogicalKeyboardKey.keyK, control: true): focusSearch,
+      },
+      child: header,
     );
   }
 
@@ -2791,15 +2842,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Widget _buildDashboardOverview() {
     final isDark = ThemeController.isDarkMode.value;
 
-    // 🪟 ASLI FROSTED GLASS COLORS (Translucent so blur shines through!)
-    final cardBg = isDark
-        ? const Color(0xFF030D08).withValues(alpha: 0.5)
-        : Colors.white.withValues(alpha: 0.42);
-    final textTitle = isDark ? Colors.white : const Color(0xFF0F172A);
-    final textSub = isDark ? Colors.white.withValues(alpha: 0.6) : const Color(0xFF334155);
+    // Clean enterprise desktop surface: opaque white card, 1px slate border.
+    final cardBg = isDark ? EnterpriseColors.sidebarDeep : EnterpriseColors.surface;
+    final textTitle = isDark ? Colors.white : EnterpriseColors.textPrimary;
+    final textSub = isDark
+        ? EnterpriseColors.sidebarMuted
+        : EnterpriseColors.textSecondary;
     final cardBorder = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.white.withValues(alpha: 0.7); // Crisp frosted border
+        ? EnterpriseColors.sidebarHover
+        : EnterpriseColors.border;
 
     final adminName = _effectiveUserName;
 
@@ -2807,18 +2858,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 1. WELCOME HEADER BANNER (NO PLANT WORD!)
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
+        Container(
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
               decoration: BoxDecoration(
                 color: cardBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: cardBorder, width: 1.2),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05), blurRadius: 20, offset: const Offset(0, 8)),
+                borderRadius: BorderRadius.circular(EnterpriseRadius.lg),
+                border: Border.all(color: cardBorder, width: 1),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x0D000000), blurRadius: 3, offset: Offset(0, 1)),
                 ],
               ),
               child: Row(
@@ -2883,25 +2930,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 13),
-                        SizedBox(width: 6),
-                        Text('System Online', style: TextStyle(color: Color(0xFF059669), fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+                  const EnterpriseStatusChip(
+                    'System Online',
+                    status: EnterpriseStatus.active,
                   ),
                 ],
               ),
-            ),
-          ),
         ),
         const SizedBox(height: 20),
 
@@ -3616,21 +3650,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       Color textSub,
       bool isDark,
       ) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: const EdgeInsets.all(18),
+    return Container(
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: border, width: 1.2),
-            boxShadow: [
+            borderRadius: BorderRadius.circular(EnterpriseRadius.lg),
+            border: Border.all(color: border, width: 1),
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
+                color: Color(0x0D000000),
+                blurRadius: 3,
+                offset: Offset(0, 1),
               ),
             ],
           ),
@@ -3666,8 +3696,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
             ],
           ),
-        ),
-      ),
     );
   }
   // 📋 PANEL 1: LIVE BIOMETRIC ATTENDANCE FEED TABLE
@@ -3677,13 +3705,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(EnterpriseRadius.lg),
             border: Border.all(color: border),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 14, offset: const Offset(0, 6)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x0D000000), blurRadius: 3, offset: Offset(0, 1)),
             ],
           ),
           child: Column(
@@ -3766,13 +3794,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('09:15 AM • Present', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                          const EnterpriseStatusChip(
+                            '09:15 AM • Present',
+                            status: EnterpriseStatus.active,
                           ),
                           const SizedBox(height: 3),
                           Text('Shift: On-Time', style: TextStyle(color: textSub, fontSize: 11)),
@@ -3818,13 +3842,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(EnterpriseRadius.lg),
             border: Border.all(color: border),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 14, offset: const Offset(0, 6)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x0D000000), blurRadius: 3, offset: Offset(0, 1)),
             ],
           ),
           child: Column(
@@ -4734,13 +4758,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             ],
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('Grade A+', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                        const EnterpriseStatusChip(
+                          'Grade A+',
+                          status: EnterpriseStatus.active,
                         ),
                         const SizedBox(width: 6),
                         Icon(Icons.chevron_right_rounded, size: 20, color: textSub),
@@ -5526,6 +5546,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   Widget _buildPlaceholderView(String title, IconData icon) {
     final isDark = ThemeController.isDarkMode.value;
+    final cleanDesktop = MediaQuery.sizeOf(context).width >= 900;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -5547,7 +5568,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               title,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: MobilePalette.title(isDark),
+                color: cleanDesktop
+                    ? (isDark ? Colors.white : EnterpriseColors.textPrimary)
+                    : MobilePalette.title(isDark),
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.2,
@@ -5558,7 +5581,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               'This module is being calibrated for launch. Everything else keeps running as usual.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: MobilePalette.body(isDark),
+                color: cleanDesktop
+                    ? (isDark
+                        ? EnterpriseColors.sidebarMuted
+                        : EnterpriseColors.textSecondary)
+                    : MobilePalette.body(isDark),
                 fontSize: 11.5,
                 height: 1.45,
               ),
@@ -5578,8 +5605,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // ⚙️ PROFILE & SETTINGS (Adaptive, mobile-first)
   Widget _buildSettingsAndMoreView() {
     final isDark = ThemeController.isDarkMode.value;
-    final textTitle = MobilePalette.title(isDark);
-    final textSub = MobilePalette.body(isDark);
+    final cleanDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final textTitle = cleanDesktop
+        ? (isDark ? Colors.white : EnterpriseColors.textPrimary)
+        : MobilePalette.title(isDark);
+    final textSub = cleanDesktop
+        ? (isDark
+            ? EnterpriseColors.sidebarMuted
+            : EnterpriseColors.textSecondary)
+        : MobilePalette.body(isDark);
 
     final rawName = widget.adminEmail.isNotEmpty
         ? widget.adminEmail.split('@')[0]
@@ -5917,6 +5951,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   void dispose() {
     _notifTimer?.cancel();
     _tabBlurController.dispose();
+    _desktopSearchFocus.dispose();
     super.dispose();
   }
 }
@@ -5930,13 +5965,25 @@ class AccessDeniedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeController.isDarkMode.value;
-    final cardBg = isDark ? const Color(0xFF0F172A) : Colors.white;
-    final textTitle = isDark ? Colors.white : const Color(0xFF0F172A);
-    final textSub = isDark ? Colors.white.withValues(alpha: 0.6) : const Color(0xFF64748B);
+    final cleanDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final cardBg = cleanDesktop
+        ? (isDark ? EnterpriseColors.sidebarDeep : EnterpriseColors.surface)
+        : (isDark ? const Color(0xFF0F172A) : Colors.white);
+    final textTitle = cleanDesktop
+        ? (isDark ? Colors.white : EnterpriseColors.textPrimary)
+        : (isDark ? Colors.white : const Color(0xFF0F172A));
+    final textSub = cleanDesktop
+        ? (isDark
+            ? EnterpriseColors.sidebarMuted
+            : EnterpriseColors.textSecondary)
+        : (isDark
+            ? Colors.white.withValues(alpha: 0.6)
+            : const Color(0xFF64748B));
 
     return Scaffold(
       body: BotanicalBackground(
         showThemeToggle: false,
+        cleanDesktop: cleanDesktop,
         child: SafeArea(
           child: Center(
             child: Container(
@@ -5945,15 +5992,32 @@ class AccessDeniedScreen extends StatelessWidget {
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
                 color: cardBg,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+                borderRadius: BorderRadius.circular(
+                  cleanDesktop ? EnterpriseRadius.lg : 24,
+                ),
+                border: Border.all(
+                  color: cleanDesktop
+                      ? (isDark
+                          ? EnterpriseColors.sidebarHover
+                          : EnterpriseColors.border)
+                      : Colors.redAccent.withValues(alpha: 0.3),
+                ),
+                boxShadow: cleanDesktop
+                    ? const [
+                        BoxShadow(
+                          color: Color(0x0D000000),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ]
+                    : [
+                        BoxShadow(
+                          color:
+                              Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,

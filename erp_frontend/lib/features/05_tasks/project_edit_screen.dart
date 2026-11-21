@@ -602,7 +602,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
     }
 
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: mainContent,
       ),

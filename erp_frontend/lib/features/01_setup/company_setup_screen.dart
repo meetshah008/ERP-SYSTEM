@@ -94,7 +94,7 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
         // 📱 1. MOBILE NATIVE (SCREEN KE BILKUL CENTER MEIN)
         if (!isDesktop) {
           return Scaffold(
-            body: BotanicalBackground(
+            body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
               showThemeToggle: false,
               child: SafeArea(
                 child: Center(
@@ -111,7 +111,7 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
 
         // 💻 2. DESKTOP / WEB LAYOUT (Unchanged)
         return Scaffold(
-          body: BotanicalBackground(
+          body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),

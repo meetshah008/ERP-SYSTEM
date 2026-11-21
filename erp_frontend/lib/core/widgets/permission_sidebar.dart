@@ -1,14 +1,12 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../navigation/app_navigation.dart';
+import '../theme/enterprise_theme.dart';
 
 /// Reusable, permission-driven sidebar for every non-Super-Admin role.
 ///
-/// The visual language (dark green frosted panel, logo header, emerald active
-/// state, profile card at the bottom) matches the existing admin sidebar so
-/// switching between roles never feels like a different application.
+/// Desktop/web only (the dashboard renders it only at width >= 900).
+/// Clean obsidian slate panel with muted slate links and emerald active pills.
 class PermissionSidebar extends StatefulWidget {
   const PermissionSidebar({
     super.key,
@@ -63,44 +61,38 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF030D08).withValues(alpha: 0.75),
-            border: Border(
-              right: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+    return Container(
+      decoration: const BoxDecoration(
+        color: EnterpriseColors.sidebar,
+        border: Border(
+          right: BorderSide(color: EnterpriseColors.sidebarDeep, width: 1),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildBrand(),
+          const SizedBox(height: 18),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                for (final group in widget.groups) ...[
+                  if (group.label.isNotEmpty) _buildGroupHeader(group),
+                  if (group.label.isNotEmpty && !_expanded.contains(group.id))
+                    const SizedBox(height: 2),
+                  if (_expanded.contains(group.id))
+                    for (final item in group.items)
+                      _buildItem(item, indented: group.label.isNotEmpty),
+                  const SizedBox(height: 10),
+                ],
+              ],
             ),
           ),
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildBrand(),
-              const SizedBox(height: 18),
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  physics: const BouncingScrollPhysics(),
-                  children: [
-                    for (final group in widget.groups) ...[
-                      if (group.label.isNotEmpty)
-                        _buildGroupHeader(group),
-                      if (group.label.isNotEmpty && !_expanded.contains(group.id))
-                        const SizedBox(height: 2),
-                      if (_expanded.contains(group.id))
-                        for (final item in group.items)
-                          _buildItem(item, indented: group.label.isNotEmpty),
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                ),
-              ),
-              _buildProfileCard(),
-            ],
-          ),
-        ),
+          _buildProfileCard(),
+        ],
       ),
     );
   }
@@ -114,12 +106,12 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
           padding: const EdgeInsets.all(5),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
+            borderRadius: BorderRadius.circular(EnterpriseRadius.md),
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
+                color: Color(0x26000000),
                 blurRadius: 8,
-                offset: const Offset(0, 2),
+                offset: Offset(0, 2),
               ),
             ],
           ),
@@ -145,7 +137,7 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
               const Text(
                 'Plant Command Center',
                 style: TextStyle(
-                  color: Color(0xFF10B981),
+                  color: Color(0xFF34D399),
                   fontSize: 10.5,
                   fontWeight: FontWeight.w600,
                 ),
@@ -162,7 +154,8 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(EnterpriseRadius.sm),
+        hoverColor: EnterpriseColors.sidebarHover,
         onTap: () {
           setState(() {
             if (expanded) {
@@ -176,13 +169,14 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
           child: Row(
             children: [
-              Icon(group.icon, size: 15, color: Colors.white.withValues(alpha: 0.45)),
+              Icon(group.icon,
+                  size: 15, color: EnterpriseColors.sidebarMuted),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   group.label,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.45),
+                  style: const TextStyle(
+                    color: EnterpriseColors.sidebarMuted,
                     fontSize: 10.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.8,
@@ -193,7 +187,7 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
               Icon(
                 expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
                 size: 16,
-                color: Colors.white.withValues(alpha: 0.45),
+                color: EnterpriseColors.sidebarMuted,
               ),
             ],
           ),
@@ -213,20 +207,18 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
         message: item.description ?? item.label,
         preferBelow: false,
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(EnterpriseRadius.md),
+          hoverColor: selected
+              ? EnterpriseColors.emeraldDeep
+              : EnterpriseColors.sidebarHover,
           onTap: () => widget.onItemSelected(item),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: selected
-                  ? const Color(0xFF059669).withValues(alpha: 0.2)
+                  ? EnterpriseColors.emerald
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: selected
-                    ? const Color(0xFF10B981).withValues(alpha: 0.5)
-                    : Colors.transparent,
-              ),
+              borderRadius: BorderRadius.circular(EnterpriseRadius.md),
             ),
             child: Row(
               children: [
@@ -234,8 +226,8 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
                   item.icon,
                   size: 19,
                   color: selected
-                      ? const Color(0xFF10B981)
-                      : Colors.white.withValues(alpha: 0.6),
+                      ? Colors.white
+                      : EnterpriseColors.sidebarMuted,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -243,10 +235,11 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
                     item.label,
                     style: TextStyle(
                       fontSize: 12.8,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight:
+                          selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected
                           ? Colors.white
-                          : Colors.white.withValues(alpha: 0.7),
+                          : EnterpriseColors.sidebarMuted,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -255,7 +248,9 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 14,
-                    color: Colors.white.withValues(alpha: selected ? 0.8 : 0.25),
+                    color: selected
+                        ? Colors.white.withValues(alpha: 0.9)
+                        : EnterpriseColors.textMuted.withValues(alpha: 0.5),
                   ),
               ],
             ),
@@ -274,15 +269,15 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: EnterpriseColors.sidebarDeep,
+        borderRadius: BorderRadius.circular(EnterpriseRadius.lg),
+        border: Border.all(color: EnterpriseColors.sidebarHover),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: const Color(0xFF059669),
+            backgroundColor: EnterpriseColors.emerald,
             child: Text(
               initial,
               style: const TextStyle(
@@ -313,10 +308,11 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: roleInfo.color.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(20),
+                    color: roleInfo.color.withValues(alpha: 0.15),
+                    borderRadius:
+                        BorderRadius.circular(EnterpriseRadius.pill),
                     border: Border.all(
-                      color: roleInfo.color.withValues(alpha: 0.4),
+                      color: roleInfo.color.withValues(alpha: 0.35),
                     ),
                   ),
                   child: Row(
@@ -340,7 +336,7 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
           ),
           IconButton(
             icon: const Icon(Icons.logout_rounded,
-                color: Colors.redAccent, size: 18),
+                color: Color(0xFFF87171), size: 18),
             tooltip: 'Logout',
             padding: EdgeInsets.zero,
             constraints:
@@ -370,20 +366,20 @@ _RoleVisuals _roleVisuals(String role) {
   final lower = clean.toLowerCase();
   if (lower.contains('super admin') || lower == 'admin') {
     return const _RoleVisuals(
-      color: Color(0xFF8B5CF6),
+      color: Color(0xFFC4B5FD),
       icon: Icons.shield_rounded,
       label: 'SUPER ADMIN',
     );
   }
   if (lower.contains('manager') || lower.contains('supervisor')) {
-    return _RoleVisuals(
-      color: const Color(0xFF0284C7),
+    return const _RoleVisuals(
+      color: Color(0xFF7DD3FC),
       icon: Icons.verified_user_rounded,
       label: 'MANAGER',
     );
   }
   return _RoleVisuals(
-    color: const Color(0xFF059669),
+    color: const Color(0xFF6EE7B7),
     icon: Icons.badge_rounded,
     label: clean.toUpperCase(),
   );

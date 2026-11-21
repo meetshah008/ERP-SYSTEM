@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/enterprise_theme.dart';
 
 /// Shared visual language for every mobile screen.
 ///
@@ -84,6 +85,10 @@ class MobileGlassCard extends StatelessWidget {
   final VoidCallback? onTap;
   final bool clip;
 
+  /// null (default) = auto: clean enterprise surface at desktop width >= 900,
+  /// original mobile glass card below that. Set explicitly to override.
+  final bool? enterprise;
+
   const MobileGlassCard({
     super.key,
     required this.child,
@@ -97,24 +102,49 @@ class MobileGlassCard extends StatelessWidget {
     this.boxShadow,
     this.onTap,
     this.clip = true,
+    this.enterprise,
   });
 
   @override
   Widget build(BuildContext context) {
+    final clean = enterprise ??
+        MediaQuery.sizeOf(context).width >= 900;
+    final cleanRadius = clean ? EnterpriseRadius.lg : radius;
+
+    // Desktop: always a flat white/obsidian surface with a 1px border and
+    // the subtle enterprise shadow, even when a mobile caller passes a
+    // gradient/tint. Mobile (<900) keeps every original value untouched.
+    final effectiveGradient = clean ? null : gradient;
+    final effectiveColor = clean
+        ? (isDark ? EnterpriseColors.sidebarDeep : EnterpriseColors.surface)
+        : (gradient == null ? (tint ?? MobilePalette.card(isDark)) : null);
+    final effectiveBorder = clean
+        ? Border.all(
+            color: isDark
+                ? EnterpriseColors.sidebarHover
+                : EnterpriseColors.border,
+            width: 1,
+          )
+        : (border ??
+            Border.all(color: MobilePalette.border(isDark), width: 1));
+    final effectiveShadow = clean
+        ? const [
+            BoxShadow(
+              color: Color(0x0D000000),
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
+          ]
+        : (boxShadow ?? MobilePalette.softShadow(isDark));
+
     final decorated = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: gradient == null
-            ? (tint ?? MobilePalette.card(isDark))
-            : null,
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(radius),
-        border: border ??
-            Border.all(
-              color: MobilePalette.border(isDark),
-              width: 1,
-            ),
-        boxShadow: boxShadow ?? MobilePalette.softShadow(isDark),
+        color: effectiveColor,
+        gradient: effectiveGradient,
+        borderRadius: BorderRadius.circular(cleanRadius),
+        border: effectiveBorder,
+        boxShadow: effectiveShadow,
       ),
       child: child,
     );
@@ -123,11 +153,11 @@ class MobileGlassCard extends StatelessWidget {
         ? decorated
         : Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(radius),
+            borderRadius: BorderRadius.circular(cleanRadius),
             clipBehavior: clip ? Clip.antiAlias : Clip.none,
             child: InkWell(
               onTap: onTap,
-              borderRadius: BorderRadius.circular(radius),
+              borderRadius: BorderRadius.circular(cleanRadius),
               splashColor: MobilePalette.emerald.withValues(alpha: 0.08),
               highlightColor: MobilePalette.emerald.withValues(alpha: 0.04),
               child: decorated,

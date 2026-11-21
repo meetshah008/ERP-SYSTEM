@@ -1997,7 +1997,7 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
     // 💻 DESKTOP LAYOUT (Preserved Full-Width Botanical Layout)
     // ==========================================
     return Scaffold(
-      body: BotanicalBackground(
+      body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 
         showThemeToggle: false,
         child: SafeArea(
           child: _isLoading
