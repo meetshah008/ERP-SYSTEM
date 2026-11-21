@@ -54,6 +54,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   int? _selectedAssigneeId;
   DateTime? _selectedDueDate;
   int? _currentEmployeeId;
+  bool _isSuperAdmin = false;
 
   // Log Hours Form Controllers (Inline - NO POPUP)
   final _logHoursCtrl = TextEditingController();
@@ -79,6 +80,8 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     }
     return false;
   }
+
+  bool get _canManageTask => _isAssignee || _isSuperAdmin;
 
   @override
   void initState() {
@@ -134,6 +137,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
     if (mounted) {
       setState(() {
+        _isSuperAdmin = isSuper;
         _currentEmployeeId = empId;
         _canEditTask = canEdit;
         _canDeleteTask = canDelete;
@@ -220,10 +224,10 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     } catch (_) {}
   }
 
-  // 1. UPDATE TASK STATUS LIVE (Only assigned employee is allowed!)
+  // 1. UPDATE TASK STATUS LIVE (Only assigned employee or admin is allowed!)
   Future<void> _updateStatus(String newStatus) async {
-    if (!_isAssignee) {
-      _showSnackbar('Access Denied: Only the assigned employee can change task status!', isSuccess: false);
+    if (!_canManageTask) {
+      _showSnackbar('Access Denied: Only the assigned employee or admin can change task status!', isSuccess: false);
       return;
     }
 
@@ -249,7 +253,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
           _selectedStatus = prevStatus;
           if (_task != null) _task!['status'] = prevStatus;
         });
-        _showSnackbar(err['message'] ?? 'Access Denied: Only assigned employee can change status!', isSuccess: false);
+        _showSnackbar(err['message'] ?? 'Access Denied: Only assigned employee or admin can change status!', isSuccess: false);
       } else {
         setState(() {
           _selectedStatus = prevStatus;
@@ -266,8 +270,13 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     }
   }
 
-  // 3. TOGGLE SUBTASK (Checklist item)
+  // 3. TOGGLE SUBTASK (Checklist item - Only assigned employee or admin allowed)
   Future<void> _toggleSubtask(dynamic subtaskId, bool isCompleted) async {
+    if (!_canManageTask) {
+      _showSnackbar('Access Denied: Only the assigned employee or admin can complete checklist items!', isSuccess: false);
+      return;
+    }
+
     setState(() {
       final rawSubtasks = _task?['subtasks'];
       if (rawSubtasks is List) {
@@ -282,17 +291,28 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     });
 
     try {
-      await ApiClient.put(
+      final res = await ApiClient.put(
         Uri.parse('$_apiHost/api/projects/subtasks/$subtaskId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'is_completed': isCompleted}),
       );
-      widget.onTaskUpdated?.call();
+      if (res.statusCode == 200) {
+        widget.onTaskUpdated?.call();
+      } else if (res.statusCode == 403) {
+        final err = jsonDecode(res.body);
+        _fetchTaskDetails();
+        _showSnackbar(err['message'] ?? 'Access Denied: Only assigned employee or admin can update checklist items!', isSuccess: false);
+      }
     } catch (_) {}
   }
 
   // 4. ADD NEW SUBTASK (Inline input - NO POPUP)
   Future<void> _addNewSubtask() async {
+    if (!_canManageTask) {
+      _showSnackbar('Access Denied: Only assigned employee or admin can add checklist items!', isSuccess: false);
+      return;
+    }
+
     final title = _newSubtaskCtrl.text.trim();
     if (title.isEmpty) return;
 
@@ -314,6 +334,11 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
   // 5. DELETE SUBTASK
   Future<void> _deleteSubtask(dynamic subtaskId) async {
+    if (!_canManageTask) {
+      _showSnackbar('Access Denied: Only assigned employee or admin can remove checklist items!', isSuccess: false);
+      return;
+    }
+
     setState(() {
       if (_task?['subtasks'] != null && _task!['subtasks'] is List) {
         (_task!['subtasks'] as List<dynamic>).removeWhere((s) => s['subtask_id'] == subtaskId);
@@ -327,8 +352,13 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     } catch (_) {}
   }
 
-  // 6. LOG WORK HOURS (Inline input - NO POPUP)
+  // 6. LOG WORK HOURS (Inline input - STRICTLY only assigned employee or admin allowed)
   Future<void> _logWorkHours() async {
+    if (!_canManageTask) {
+      _showSnackbar('Access Denied: Only the assigned employee or admin can log time on this task!', isSuccess: false);
+      return;
+    }
+
     final hours = double.tryParse(_logHoursCtrl.text.trim());
     if (hours == null || hours <= 0) {
       _showSnackbar('Please enter valid hours spent', isSuccess: false);
@@ -361,6 +391,11 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
         _fetchTaskDetails();
         widget.onTaskUpdated?.call();
         _showSnackbar('Logged $hours hours successfully!', isSuccess: true);
+      } else if (res.statusCode == 403) {
+        final err = jsonDecode(res.body);
+        _showSnackbar(err['message'] ?? 'Access Denied: Only assigned employee or admin can log time!', isSuccess: false);
+      } else {
+        _showSnackbar('Failed to log hours (${res.statusCode})', isSuccess: false);
       }
     } catch (e) {
       _showSnackbar('Error logging hours: $e', isSuccess: false);
@@ -661,8 +696,8 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               ),
               const SizedBox(width: 8),
 
-              // Status Badge / Controls (Only assigned employee can change status)
-              if (_isAssignee) ...[
+              // Status Badge / Controls (Only assigned employee or admin can change status)
+              if (_canManageTask) ...[
                 PopupMenuButton<String>(
                   tooltip: 'Change Status',
                   onSelected: _updateStatus,
@@ -703,7 +738,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               ] else ...[
                 // Read-Only Status Indicator for other members
                 Tooltip(
-                  message: 'Status: $status (Only assigned employee can update)',
+                  message: 'Status: $status (Only assigned employee or admin can update)',
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -724,17 +759,6 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                   ),
                 ),
                 const Spacer(),
-                Tooltip(
-                  message: 'Status is read-only (Only assigned employee can change)',
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Icon(
-                      isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                      color: isDone ? const Color(0xFF10B981) : textSub.withValues(alpha: 0.35),
-                      size: 24,
-                    ),
-                  ),
-                ),
               ],
             ],
           ),
@@ -1014,11 +1038,16 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                 ),
                 child: Row(
                   children: [
-                    Checkbox(
-                      value: isComp,
-                      activeColor: const Color(0xFF10B981),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      onChanged: (val) => _toggleSubtask(st['subtask_id'], val ?? false),
+                    Tooltip(
+                      message: _canManageTask
+                          ? 'Toggle checklist item'
+                          : 'Only assigned employee or admin can complete checklist items',
+                      child: Checkbox(
+                        value: isComp,
+                        activeColor: const Color(0xFF10B981),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        onChanged: _canManageTask ? (val) => _toggleSubtask(st['subtask_id'], val ?? false) : null,
+                      ),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -1031,7 +1060,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                         ),
                       ),
                     ),
-                    if (_canDeleteTask)
+                    if (_canDeleteTask && _canManageTask)
                       IconButton(
                         icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
                         padding: EdgeInsets.zero,
@@ -1044,7 +1073,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               );
             }),
 
-          if (_canEditTask) ...[
+          if (_canEditTask && _canManageTask) ...[
             const SizedBox(height: 10),
 
             // INLINE ADD SUBTASK FIELD (NO POPUP!)
@@ -1170,7 +1199,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               );
             }),
 
-          if (_canLogTimesheet) ...[
+          if (_canLogTimesheet && _canManageTask) ...[
             const SizedBox(height: 14),
             const Divider(),
             const SizedBox(height: 10),

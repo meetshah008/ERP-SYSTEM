@@ -1,5 +1,5 @@
 const db = require('../../config/db');
-const { resolveCompanyId } = require('../../utils/tenant');
+const { resolveCompanyId, resolveRequesterInfo } = require('../../utils/tenant');
 
 // Notification table check and send helper
 const sendNotification = async ({ companyId = 1, title, message, type, referenceId, targetUserId }) => {
@@ -361,10 +361,49 @@ exports.createProjectTask = async (req, res) => {
 };
 
 // 5. SUBTASK TICK/UNTICK KARNA (Checklist Toggle)
+// STRICT REQUIREMENT: Only assigned employee(s) of the parent task OR Super Admin can toggle checklist items!
 exports.toggleSubtask = async (req, res) => {
   try {
     const { subtaskId } = req.params;
     const { is_completed } = req.body; // true ya false (1 ya 0)
+
+    // 1. Fetch subtask and its parent task
+    const [subRows] = await db.query(
+      `SELECT st.subtask_id, st.task_id, t.assigned_to
+       FROM task_subtask st
+       JOIN task t ON st.task_id = t.task_id
+       WHERE st.subtask_id = ?`,
+      [subtaskId]
+    );
+
+    if (subRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Subtask not found!' });
+    }
+
+    const { task_id, assigned_to } = subRows[0];
+
+    // 2. Resolve requester info
+    const requester = await resolveRequesterInfo(req);
+
+    // 3. Enforce permission: ONLY assigned employee OR admin can toggle checklist item
+    if (!requester.isSuperAdmin) {
+      const [assigneeRows] = await db.query(
+        'SELECT employee_id FROM task_assignees WHERE task_id = ?',
+        [task_id]
+      );
+      const assigneeIds = new Set(
+        [assigned_to, ...assigneeRows.map(r => r.employee_id)]
+          .filter(e => e !== null && e !== undefined)
+          .map(e => parseInt(e, 10))
+      );
+
+      if (!requester.employeeId || !assigneeIds.has(requester.employeeId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access Denied: Only the assigned employee or admin can update checklist items!'
+        });
+      }
+    }
 
     await db.query(
       `UPDATE task_subtask SET is_completed = ? WHERE subtask_id = ?`,
@@ -378,6 +417,7 @@ exports.toggleSubtask = async (req, res) => {
 };
 
 // 5B. NAYA SUBTASK DIRECTLY ADD KARNA (Task ke andar)
+// STRICT REQUIREMENT: Only assigned employee(s) of the parent task OR Super Admin can add checklist items!
 exports.addSubtask = async (req, res) => {
   try {
     const { taskId } = req.params;
@@ -385,6 +425,26 @@ exports.addSubtask = async (req, res) => {
 
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, message: 'Subtask title is required!' });
+    }
+
+    const requester = await resolveRequesterInfo(req);
+    if (!requester.isSuperAdmin) {
+      const [tRows] = await db.query('SELECT task_id, assigned_to FROM task WHERE task_id = ?', [taskId]);
+      if (tRows.length > 0) {
+        const [aRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [taskId]);
+        const assigneeIds = new Set(
+          [tRows[0].assigned_to, ...aRows.map(r => r.employee_id)]
+            .filter(e => e !== null && e !== undefined)
+            .map(e => parseInt(e, 10))
+        );
+
+        if (!requester.employeeId || !assigneeIds.has(requester.employeeId)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access Denied: Only the assigned employee or admin can add checklist items!'
+          });
+        }
+      }
     }
 
     const [result] = await db.query(
@@ -403,6 +463,7 @@ exports.addSubtask = async (req, res) => {
 };
 
 // 6. TIMESHEET LOG KARNA (Hours spent)
+// STRICT REQUIREMENT: Only assigned employee(s) of the task OR Super Admin can log time on a task!
 exports.logTimesheet = async (req, res) => {
   try {
     const { id } = req.params; // project_id
@@ -410,6 +471,28 @@ exports.logTimesheet = async (req, res) => {
 
     if (!employee_id || !hours_spent) {
       return res.status(400).json({ success: false, message: 'Worker and logged hours are required!' });
+    }
+
+    const requester = await resolveRequesterInfo(req);
+
+    // If task_id is provided, enforce that only assigned employee or admin can log time
+    if (task_id && !requester.isSuperAdmin) {
+      const [tRows] = await db.query('SELECT task_id, assigned_to FROM task WHERE task_id = ?', [task_id]);
+      if (tRows.length > 0) {
+        const [aRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [task_id]);
+        const assigneeIds = new Set(
+          [tRows[0].assigned_to, ...aRows.map(r => r.employee_id)]
+            .filter(e => e !== null && e !== undefined)
+            .map(e => parseInt(e, 10))
+        );
+
+        if (!requester.employeeId || !assigneeIds.has(requester.employeeId)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Access Denied: Only the assigned employee or admin can log time on this task!'
+          });
+        }
+      }
     }
 
     await db.query(`
@@ -555,9 +638,45 @@ exports.deleteProject = async (req, res) => {
   }
 };
 // 10. SUBTASK DELETE KARNA
+// STRICT REQUIREMENT: Only assigned employee(s) of the parent task OR Super Admin can delete checklist items!
 exports.deleteSubtask = async (req, res) => {
   try {
     const { subtaskId } = req.params;
+
+    // 1. Fetch subtask and its parent task
+    const [subRows] = await db.query(
+      `SELECT st.subtask_id, st.task_id, t.assigned_to
+       FROM task_subtask st
+       JOIN task t ON st.task_id = t.task_id
+       WHERE st.subtask_id = ?`,
+      [subtaskId]
+    );
+
+    if (subRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Subtask not found!' });
+    }
+
+    const { task_id, assigned_to } = subRows[0];
+    const requester = await resolveRequesterInfo(req);
+
+    if (!requester.isSuperAdmin) {
+      const [assigneeRows] = await db.query(
+        'SELECT employee_id FROM task_assignees WHERE task_id = ?',
+        [task_id]
+      );
+      const assigneeIds = new Set(
+        [assigned_to, ...assigneeRows.map(r => r.employee_id)]
+          .filter(e => e !== null && e !== undefined)
+          .map(e => parseInt(e, 10))
+      );
+
+      if (!requester.employeeId || !assigneeIds.has(requester.employeeId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access Denied: Only the assigned employee or admin can delete checklist items!'
+        });
+      }
+    }
 
     const [result] = await db.query(`DELETE FROM task_subtask WHERE subtask_id = ?`, [subtaskId]);
 

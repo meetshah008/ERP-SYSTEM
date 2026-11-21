@@ -1,6 +1,6 @@
 const db = require('../../config/db');
 const jwt = require('jsonwebtoken');
-const { resolveCompanyId } = require('../../utils/tenant');
+const { resolveCompanyId, resolveRequesterInfo } = require('../../utils/tenant');
 
 async function resolveRequesterEmployee(req) {
   // 1. Direct req.user
@@ -378,14 +378,14 @@ exports.updateTaskStatus = async (req, res) => {
         .map(e => parseInt(e, 10))
     );
 
-    // C. Resolve authenticated requester employee ID
-    const requesterEmpId = await resolveRequesterEmployee(req);
+    // C. Resolve authenticated requester employee ID & admin status
+    const requester = await resolveRequesterInfo(req);
 
-    // D. Enforce permission: ONLY assigned user can update status
-    if (!requesterEmpId || !assigneeIds.has(requesterEmpId)) {
+    // D. Enforce permission: ONLY assigned user OR Super Admin can update status
+    if (!requester.isSuperAdmin && (!requester.employeeId || !assigneeIds.has(requester.employeeId))) {
       return res.status(403).json({
         success: false,
-        message: 'Access Denied: Only the assigned employee can change task status!'
+        message: 'Access Denied: Only the assigned employee or admin can change task status!'
       });
     }
 
@@ -422,7 +422,7 @@ exports.updateTask = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least 1 Assignee and Title are required!' });
     }
 
-    // Check if status is being changed: only assigned employee is allowed to change status!
+    // Check if status is being changed: only assigned employee or Super Admin is allowed to change status!
     let targetStatus = existing.status;
     if (status && status !== existing.status) {
       const [assigneeRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [id]);
@@ -431,11 +431,11 @@ exports.updateTask = async (req, res) => {
           .filter(e => e !== null && e !== undefined)
           .map(e => parseInt(e, 10))
       );
-      const requesterEmpId = await resolveRequesterEmployee(req);
-      if (!requesterEmpId || !assigneeIds.has(requesterEmpId)) {
+      const requester = await resolveRequesterInfo(req);
+      if (!requester.isSuperAdmin && (!requester.employeeId || !assigneeIds.has(requester.employeeId))) {
         return res.status(403).json({
           success: false,
-          message: 'Access Denied: Only the assigned employee can change task status!'
+          message: 'Access Denied: Only the assigned employee or admin can change task status!'
         });
       }
       targetStatus = status;

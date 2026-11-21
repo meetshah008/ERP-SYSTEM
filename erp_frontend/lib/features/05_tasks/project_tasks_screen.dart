@@ -566,13 +566,14 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   }
 
   // 5. TASK STATUS UPDATE (TODO -> IN_PROGRESS -> DONE)
-  // Enforces that only the assigned employee can change status
+  // Enforces that only the assigned employee or admin can change status
   Future<void> _updateTaskStatus(int taskId, String newStatus, [Map<String, dynamic>? task]) async {
-    if (task != null && !_isAssignedToTask(task)) {
+    final isAdmin = _currentUserRole == 'Super Admin' || _currentUserRole == 'admin';
+    if (task != null && !_isAssignedToTask(task) && !isAdmin) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Access Denied: Only the assigned employee can change task status!'),
+            content: Text('Access Denied: Only the assigned employee or admin can change task status!'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -618,6 +619,20 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       );
       if (res.statusCode == 200) {
         _fetchAllTasks();
+        if (_selectedProject != null) {
+          _fetchProjectDetails(_selectedProject!['project_id']);
+        }
+      } else if (res.statusCode == 403) {
+        final err = jsonDecode(res.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(err['message'] ?? 'Access Denied: Only assigned employee or admin can update checklist items!'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
         if (_selectedProject != null) {
           _fetchProjectDetails(_selectedProject!['project_id']);
         }
@@ -3016,7 +3031,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         final task = list[index];
         final status = _taskStatus(task);
         final isDone = status == 'DONE';
-        final isAssignee = _isAssignedToTask(task);
+        final isAssignee = _isAssignedToTask(task) || _currentUserRole == 'Super Admin' || _currentUserRole == 'admin';
         final priority = (task['priority'] ?? 'MEDIUM').toString().toUpperCase();
         final priColor = _generalPriorityColor(priority);
         final isOverdue = _isTaskOverdue(task);
@@ -3307,7 +3322,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       textTitle: textTitle,
       textSub: textSub,
       isDark: isDark,
-      isAssignee: _isAssignedToTask(task),
+      isAssignee: _isAssignedToTask(task) || _currentUserRole == 'Super Admin' || _currentUserRole == 'admin',
       canEdit: _canEditTask,
       canDelete: _canDeleteTask,
       onTap: () => _openTaskDetailsDialog(task),
@@ -3888,7 +3903,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   textSub: textSub,
                   isDark: isDark,
                   isMobile: isMobile,
-                  isAssignee: _isAssignedToTask(t),
+                  isAssignee: _isAssignedToTask(t) || _currentUserRole == 'Super Admin' || _currentUserRole == 'admin',
                   canEdit: _canEditTask,
                   canDelete: _canDeleteTask,
                   onToggleStatus: () {
@@ -5342,11 +5357,18 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
                             SizedBox(
                               width: 18,
                               height: 18,
-                              child: Checkbox(
-                                value: stDone,
-                                activeColor: const Color(0xFF10B981),
-                                visualDensity: VisualDensity.compact,
-                                onChanged: (val) => widget.onToggleSubtask(st['subtask_id'], val ?? false),
+                              child: Tooltip(
+                                message: widget.isAssignee
+                                    ? (stDone ? 'Mark as incomplete' : 'Mark as complete')
+                                    : 'Only assigned member or admin can toggle checklist',
+                                child: Checkbox(
+                                  value: stDone,
+                                  activeColor: const Color(0xFF10B981),
+                                  visualDensity: VisualDensity.compact,
+                                  onChanged: widget.isAssignee
+                                      ? (val) => widget.onToggleSubtask(st['subtask_id'], val ?? false)
+                                      : null,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -5449,22 +5471,24 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
                   ),
                 ),
 
-                // + Add Item Link
-                InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () => widget.onAddSubtask(t['task_id'], t['title'] ?? ''),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.add_circle_outline, size: 14, color: Color(0xFF10B981)),
-                        SizedBox(width: 4),
-                        Text('+ Add item', style: TextStyle(color: Color(0xFF10B981), fontSize: 11.5, fontWeight: FontWeight.w600)),
-                      ],
+                // + Add Item Link (Visible only to assigned member or admin)
+                if (widget.isAssignee) ...[
+                  InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => widget.onAddSubtask(t['task_id'], t['title'] ?? ''),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.add_circle_outline, size: 14, color: Color(0xFF10B981)),
+                          SizedBox(width: 4),
+                          Text('+ Add item', style: TextStyle(color: Color(0xFF10B981), fontSize: 11.5, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ],
