@@ -21,7 +21,7 @@ class MobileWallpaper extends StatefulWidget {
   const MobileWallpaper({
     super.key,
     required this.child,
-    this.showThemeToggle = true,
+    this.showThemeToggle = false,
   });
 
   @override
@@ -135,16 +135,6 @@ class _MobileWallpaperState extends State<MobileWallpaper>
 
             // 4. Screen content.
             Positioned.fill(child: widget.child),
-
-            // 5. Optional floating theme switch (screens without their own).
-            if (widget.showThemeToggle)
-              Positioned(
-                top: 18,
-                right: 18,
-                child: SafeArea(
-                  child: _FloatingThemeToggle(isDark: isDark),
-                ),
-              ),
           ],
         );
       },
@@ -152,62 +142,7 @@ class _MobileWallpaperState extends State<MobileWallpaper>
   }
 }
 
-class _FloatingThemeToggle extends StatelessWidget {
-  final bool isDark;
 
-  const _FloatingThemeToggle({required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(30),
-        onTap: ThemeController.toggleTheme,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF071A16).withValues(alpha: 0.72)
-                : Colors.white.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.14)
-                  : Colors.white.withValues(alpha: 0.9),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                size: 15,
-                color: isDark ? const Color(0xFFFBBF24) : const Color(0xFF0B1520),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                isDark ? 'Light' : 'Dark',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF0B1520),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _AuroraForestPainter extends CustomPainter {
   final double progress;

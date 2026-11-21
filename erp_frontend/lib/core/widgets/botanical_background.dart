@@ -17,7 +17,7 @@ class BotanicalBackground extends StatefulWidget {
   const BotanicalBackground({
     super.key,
     required this.child,
-    this.showThemeToggle = true,
+    this.showThemeToggle = false,
     this.cleanDesktop = false,
   });
 
@@ -73,48 +73,6 @@ class _BotanicalBackgroundState extends State<BotanicalBackground> {
               ),
             ),
             Positioned.fill(child: widget.child),
-            if (widget.showThemeToggle)
-              Positioned(
-                top: 24,
-                right: 28,
-                child: SafeArea(
-                  child: InkWell(
-                    borderRadius:
-                        BorderRadius.circular(EnterpriseRadius.md),
-                    onTap: ThemeController.toggleTheme,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 7),
-                      decoration: EnterpriseTheme.card(
-                        radius: EnterpriseRadius.md,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isDark
-                                ? Icons.light_mode_rounded
-                                : Icons.dark_mode_rounded,
-                            size: 16,
-                            color: EnterpriseColors.emerald,
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            isDark ? 'Light Mode' : 'Dark Mode',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: isDark
-                                  ? Colors.white
-                                  : EnterpriseColors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -195,60 +153,6 @@ class _BotanicalBackgroundState extends State<BotanicalBackground> {
 
             // 4. Content (Child)
             Positioned.fill(child: widget.child),
-
-            // 5. Floating Theme Toggle Pill (Top-Right)
-            if (widget.showThemeToggle)
-              Positioned(
-                top: 24,
-                right: 28,
-                child: SafeArea(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: ThemeController.toggleTheme,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.black.withValues(alpha: 0.5)
-                            : Colors.white.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.15)
-                              : Colors.black.withValues(alpha: 0.1),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                            size: 16,
-                            color: isDark ? const Color(0xFFFBBF24) : const Color(0xFF0F172A),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            isDark ? 'Light Mode' : 'Dark Mode',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : const Color(0xFF0F172A),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -459,63 +363,6 @@ class _MobileCanvas extends StatelessWidget {
               ),
             ),
             Positioned.fill(child: child),
-            if (showThemeToggle)
-              Positioned(
-                top: 16,
-                right: 16,
-                child: SafeArea(
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: ThemeController.toggleTheme,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF111C2E)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isDark
-                                ? const Color(0xFF1E293B)
-                                : const Color(0xFFE2E8F0),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isDark
-                                  ? Icons.light_mode_rounded
-                                  : Icons.dark_mode_rounded,
-                              size: 14,
-                              color: isDark
-                                  ? const Color(0xFFFBBF24)
-                                  : const Color(0xFF475569),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              isDark ? 'Light' : 'Dark',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: isDark
-                                    ? const Color(0xFFF1F5F9)
-                                    : const Color(0xFF334155),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         );
       },

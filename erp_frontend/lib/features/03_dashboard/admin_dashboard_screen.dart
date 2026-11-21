@@ -716,7 +716,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       valueListenable: ThemeController.isDarkMode,
       builder: (context, isDark, _) {
         final body = BotanicalBackground(
-          showThemeToggle: isDesktop,
+          showThemeToggle: false,
           cleanDesktop: isDesktop,
           child: Column(
             children: [
@@ -1183,8 +1183,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       _buildNavItem(Icons.factory_outlined, 'Manufacturing & BOM'),
                     if (_hasPermission('finance_view_reports'))
                       _buildNavItem(Icons.account_balance_wallet_outlined, 'Accounts & Finance'),
-                    if (_hasPermission('system_audit_logs'))
-                      _buildNavItem(Icons.settings_outlined, 'Settings & Logs'),
+                    _buildNavItem(Icons.settings_outlined, 'Settings & Logs'),
                   ],
                 ),
               ),
@@ -1337,7 +1336,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           if (showSearch) const SizedBox(width: 16),
           // 🔔 Live Notification Bell (with unread badge)
           _buildNotificationBell(isDark),
-          SizedBox(width: showSearch ? 16 : 145),
+          const SizedBox(width: 16),
         ],
       ),
     );
@@ -1400,11 +1399,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         }
         return _buildPlaceholderView('Accounts & Invoicing', Icons.account_balance_wallet_outlined);
       case 'Settings & Logs':
-        // The mobile "Profile" tab is always reachable so users can switch
-        // theme, inspect their workspace and log out.
-        if (isDesktop && !_hasPermission('system_audit_logs')) {
-          return _buildAccessDeniedView('Settings & Logs');
-        }
+        // Reachable by all users so they can switch theme, inspect their workspace, and log out.
         return _buildSettingsAndMoreView();
       default:
         return isDesktop ? _buildDashboardOverview() : _buildMobileDashboardView();

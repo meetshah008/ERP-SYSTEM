@@ -309,7 +309,7 @@ abstract final class AppNavCatalog {
           label: 'Settings & Logs',
           icon: Icons.settings_outlined,
           module: AppNavModule.system,
-          permissionKey: 'system_audit_logs',
+          permissionKey: null,
           targetMenu: 'Settings & Logs',
         ),
       ],
