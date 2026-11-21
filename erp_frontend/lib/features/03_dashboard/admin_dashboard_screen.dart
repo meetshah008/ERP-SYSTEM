@@ -21,6 +21,8 @@ import '../04_hr_module/salary_increment_screen.dart';
 import '../04_hr_module/departments_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform; // <-- Add this
 import '../../core/widgets/expandable_nav_bar.dart';  // <-- Add this
+import '../../core/navigation/app_navigation.dart';
+import '../../core/widgets/permission_sidebar.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final String companyName;
@@ -75,9 +77,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Map<String, bool> _permissions = {};
   String _displayName = '';
 
+  // Permission-driven navigation. Super Admin keeps the original sidebar.
+  List<AppNavGroup> _navGroups = const [];
+  String _activeNavId = 'dashboard';
+
+  bool get _useDynamicSidebar => widget.role != 'Super Admin';
+
   @override
   void initState() {
     super.initState();
+
+    // Show the Dashboard entry immediately, then refine it once the stored
+    // permissions are loaded. Super Admin never uses this tree.
+    _navGroups = AppNavResolver.resolve(widget.role, const {});
 
     _tabBlurController = AnimationController(
       vsync: this,
@@ -183,6 +195,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (mounted) {
       setState(() {
         _permissions = perms;
+        // Sidebar, tab guard and screens all read the same permission map.
+        _navGroups = AppNavResolver.resolve(widget.role, perms);
       });
       _fetchNotifications(); // Reload scoped notifications with permissions
     }
@@ -200,6 +214,79 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _hasPermission('attendance_view_logs') ||
         _hasPermission('leaves_apply') ||
         _hasPermission('leaves_approve');
+  }
+
+  /// Guards the older dashboard shortcuts as well. Super Admin resolves to
+  /// `true` for every key, so its navigation behaviour stays identical.
+  Future<void> _pushGuarded(
+    Widget screen, {
+    required String permissionKey,
+    required String moduleTitle,
+  }) async {
+    if (!_hasPermission(permissionKey)) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AccessDeniedScreen(moduleTitle: moduleTitle),
+        ),
+      );
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+    );
+  }
+
+  /// Single entry point for the permission-driven sidebar.
+  ///
+  /// The permission is checked again on click so a revoked permission is
+  /// honoured even before the next session reload. Target tabs still use the
+  /// existing dashboard content switcher; screen items push the same existing
+  /// pages as before, wrapped in a guard so direct pushes are also blocked.
+  Future<void> _onDynamicNavSelected(AppNavItem item) async {
+    if (!AppNavResolver.canOpen(
+      widget.role,
+      _permissions,
+      item.permissionKey,
+    )) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AccessDeniedScreen(moduleTitle: item.label),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _activeNavId = item.id);
+
+    if (item.targetMenu != null) {
+      setState(() => _selectedMenu = item.targetMenu!);
+      return;
+    }
+
+    final screen = item.screenBuilder?.call();
+    if (screen == null) return;
+
+    final key = item.permissionKey;
+    final routedScreen = key == null
+        ? screen
+        : PermissionGate(
+            permissionKey: key,
+            moduleTitle: item.label,
+            child: screen,
+          );
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => routedScreen),
+    );
+    if (mounted) {
+      setState(() => _activeNavId = 'dashboard');
+    }
   }
 
   // 1. BACKEND SE LIVE DATA FETCH KARNA
@@ -461,7 +548,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             if (mounted) {
                               Navigator.pop(ctx);
                               if (type == 'LEAVE_REQUEST') {
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaveManagementScreen()));
+                                await _pushGuarded(
+                                  const LeaveManagementScreen(),
+                                  permissionKey: 'leaves_approve',
+                                  moduleTitle: 'Staff Leave Approvals',
+                                );
                               }
                             }
                           },
@@ -558,6 +649,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       case 'HR & Employees':
         return 1;
       case 'Projects & Tasks':
+      case 'General Tasks':
         return 2;
       case 'Settings & Logs':
       default:
@@ -633,11 +725,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               Expanded(
                 child: Row(
                   children: [
-                    // Desktop: frosted glass sidebar
+                    // Desktop / tablet: permission-driven sidebar for managers
+                    // and employees. Super Admin keeps the original 270px panel.
                     if (isDesktop)
                       SizedBox(
-                        width: 270,
-                        child: _buildDesktopSidebar(),
+                        width: _useDynamicSidebar
+                            ? (screenWidth < 1100 ? 246.0 : 270.0)
+                            : 270,
+                        child: _useDynamicSidebar
+                            ? PermissionSidebar(
+                                groups: _navGroups,
+                                companyName: widget.companyName,
+                                role: widget.role,
+                                userName: _effectiveUserName,
+                                activeNavId: _activeNavId,
+                                activeMenu: _selectedMenu,
+                                onItemSelected: _onDynamicNavSelected,
+                                onLogout: _handleLogout,
+                              )
+                            : _buildDesktopSidebar(),
                       ),
 
                     // Center workspace
@@ -911,6 +1017,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       case 'HR & Employees':
         return Icons.groups_rounded;
       case 'Projects & Tasks':
+      case 'General Tasks':
         return Icons.assignment_rounded;
       case 'Settings & Logs':
         return Icons.person_rounded;
@@ -1213,7 +1320,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         if (!_hasPermission('tasks_view')) {
           return _buildAccessDeniedView('Projects & Tasks');
         }
-        return const ProjectTasksScreen();
+        return const ProjectTasksScreen(
+          key: ValueKey('project_tasks_projects_view'),
+          initialTopView: 0,
+        );
+      case 'General Tasks':
+        if (!_hasPermission('tasks_view')) {
+          return _buildAccessDeniedView('General Tasks');
+        }
+        // Same existing board, opened directly on its General Tasks tab.
+        return const ProjectTasksScreen(
+          key: ValueKey('project_tasks_general_view'),
+          initialTopView: 1,
+        );
       case 'Inventory & Stock':
         if (!_hasPermission('inventory_view_stock')) {
           return _buildAccessDeniedView('Inventory & Stock');
@@ -2893,11 +3012,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // ================= 🏢 DEPARTMENT MANAGEMENT SCREEN (VIEW, ADD, EDIT, DELETE, MEMBERS) =================
   void _openDepartmentManagementDialog() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const DepartmentsScreen(),
-      ),
+    _pushGuarded(
+      const DepartmentsScreen(),
+      permissionKey: 'hr_manage_departments',
+      moduleTitle: 'Department Management',
     ).then((_) {
       _fetchLiveStats();
     });
@@ -3784,9 +3902,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 textTitle: textTitle,
                 textSub: textSub,
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DepartmentsScreen()),
+                  _pushGuarded(
+                    const DepartmentsScreen(),
+                    permissionKey: 'hr_manage_departments',
+                    moduleTitle: 'Department Management',
                   ).then((_) => _fetchLiveStats());
                 },
               ),

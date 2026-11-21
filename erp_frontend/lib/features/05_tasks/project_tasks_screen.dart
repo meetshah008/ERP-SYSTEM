@@ -13,7 +13,11 @@ import 'task_form_screen.dart';
 import '../../core/network/session_manager.dart';
 
 class ProjectTasksScreen extends StatefulWidget {
-  const ProjectTasksScreen({super.key});
+  const ProjectTasksScreen({super.key, this.initialTopView = 0});
+
+  /// 0 = Projects Hub, 1 = General Tasks board. Used by the permission-aware
+  /// sidebar to open the General Tasks tab directly.
+  final int initialTopView;
 
   @override
   State<ProjectTasksScreen> createState() => _ProjectTasksScreenState();
@@ -71,11 +75,23 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   @override
   void initState() {
     super.initState();
+    _activeTopView = widget.initialTopView == 1 ? 1 : 0;
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
     _loadUserPermissions(); // 🟢 Yahan permissions load karein
+  }
+
+  @override
+  void didUpdateWidget(covariant ProjectTasksScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTopView != widget.initialTopView) {
+      setState(() {
+        _activeTopView = widget.initialTopView == 1 ? 1 : 0;
+        _selectedProject = null;
+      });
+    }
   }
 
   Future<void> _loadUserPermissions() async {
