@@ -71,7 +71,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -3731,7 +3731,6 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           tabs: const [
             Tab(text: 'Tasks & Checklist'),
             Tab(text: 'Team Members'),
-            Tab(text: 'Timesheets'),
             Tab(text: 'Components'),
           ],
         ),
@@ -3751,9 +3750,6 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   tabContent = _buildProjectTeamTab(cardBg, cardBorder, textTitle, textSub);
                   break;
                 case 2:
-                  tabContent = _buildProjectTimesheetTab(cardBg, cardBorder, textTitle, textSub);
-                  break;
-                case 3:
                   tabContent = _buildProjectComponentsTab(cardBg, cardBorder, textTitle, textSub);
                   break;
                 default:
@@ -4002,43 +3998,6 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                     Text(m['role_in_project'] ?? 'Member', style: TextStyle(color: textSub, fontSize: 11.5)),
                   ],
                 ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // TAB 3: Timesheets
-  Widget _buildProjectTimesheetTab(Color cardBg, Color cardBorder, Color textTitle, Color textSub) {
-    final timesheets = (_projectDetails?['timesheets'] as List<dynamic>?) ?? [];
-    final isDark = ThemeController.isDarkMode.value;
-    final itemBg = isDark ? const Color(0xFF0F172A) : Colors.white;
-
-    return timesheets.isEmpty
-        ? Center(child: Text('No work hours logged yet for this project.', style: TextStyle(color: textSub)))
-        : ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: timesheets.length,
-      itemBuilder: (context, idx) {
-        final ts = timesheets[idx];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: itemBg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cardBorder),
-            boxShadow: const [],
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.timer_outlined, color: Color(0xFFD97706), size: 19),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text('${ts['worker_name']} logged ${ts['hours_spent']} hrs: ${ts['description'] ?? ''}', style: TextStyle(color: textTitle, fontSize: 13)),
               ),
             ],
           ),
