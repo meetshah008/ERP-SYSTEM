@@ -410,6 +410,25 @@ exports.updateTask = async (req, res) => {
     }
     const existing = existingTasks[0];
 
+    // Resolve requester once for all checks
+    const requester = await resolveRequesterInfo(req);
+
+    // PERMISSION CHECK: Only the assigned employee (self-assigned task owner) OR Admin can edit this task!
+    if (!requester.isSuperAdmin) {
+      const [assigneeRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [id]);
+      const assigneeIds = new Set(
+        [existing.assigned_to, ...assigneeRows.map(r => r.employee_id)]
+          .filter(e => e !== null && e !== undefined)
+          .map(e => parseInt(e, 10))
+      );
+      if (!requester.employeeId || !assigneeIds.has(requester.employeeId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access Denied: Only the assigned employee or admin can edit this task!'
+        });
+      }
+    }
+
     // Handle multiple assignees or single assigned_to
     let assigneeList = [];
     if (Array.isArray(assignees) && assignees.length > 0) {
@@ -422,22 +441,10 @@ exports.updateTask = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least 1 Assignee and Title are required!' });
     }
 
-    // Check if status is being changed: only assigned employee or Super Admin is allowed to change status!
+    // Status change: only assigned employee or Super Admin can change status
     let targetStatus = existing.status;
     if (status && status !== existing.status) {
-      const [assigneeRows] = await db.query('SELECT employee_id FROM task_assignees WHERE task_id = ?', [id]);
-      const assigneeIds = new Set(
-        [existing.assigned_to, ...assigneeRows.map(r => r.employee_id)]
-          .filter(e => e !== null && e !== undefined)
-          .map(e => parseInt(e, 10))
-      );
-      const requester = await resolveRequesterInfo(req);
-      if (!requester.isSuperAdmin && (!requester.employeeId || !assigneeIds.has(requester.employeeId))) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access Denied: Only the assigned employee or admin can change task status!'
-        });
-      }
+      // Already verified requester is assigned above, so just allow
       targetStatus = status;
     }
 

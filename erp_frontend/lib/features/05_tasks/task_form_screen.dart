@@ -60,6 +60,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   bool _canAssignOthers = true;
   bool _isPrivateTask = false;
   int? _currentEmployeeId;
+  bool _isSuperAdmin = false;
 
   bool get isEdit => widget.task != null;
 
@@ -134,6 +135,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     try {
       final session = await SessionManager.getUserSession();
       final isSuper = session['role'] == 'Super Admin' || session['role_name'] == 'Super Admin';
+      _isSuperAdmin = isSuper;
       final hasAssign = isSuper || await SessionManager.hasPermission('tasks_create_assign');
       _canAssignOthers = hasAssign;
 
@@ -607,6 +609,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   bool get _isAssignedToThisTask {
     if (!isEdit) return true; // new task being created
+    if (_isSuperAdmin) return true; // Admin can always manage
     if (_currentEmployeeId == null || widget.task == null) return false;
     final assignedTo = widget.task!['assigned_to'];
     if (assignedTo != null && assignedTo.toString() == _currentEmployeeId.toString()) return true;

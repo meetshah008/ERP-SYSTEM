@@ -1274,6 +1274,9 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
 
   void _openTaskDetailsDialog(dynamic task) {
     final Map<String, dynamic> taskMap = task is Map ? Map<String, dynamic>.from(task) : <String, dynamic>{};
+    // Edit permission: Admin OR assigned employee (self-assigned task owner)
+    final canEditThisTask = _canEditTask &&
+        (_currentUserRole == 'Super Admin' || _currentUserRole == 'admin' || _isAssignedToTask(taskMap));
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -1282,7 +1285,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
           initialTask: taskMap,
           projectId: taskMap['project_id'] ?? _selectedProject?['project_id'],
           employees: _employees,
-          canEdit: _canEditTask,
+          canEdit: canEditThisTask,
           canDelete: _canDeleteTask,
           onTaskUpdated: () {
             _refreshAll();
@@ -3150,7 +3153,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               const SizedBox(width: 12),
 
               // 6. Action Buttons (Permission Controlled)
-              if (_canEditTask)
+              // Edit: visible only to Admin OR the assigned employee (self-assigned task owner)
+              if (_canEditTask && (_currentUserRole == 'Super Admin' || _currentUserRole == 'admin' || _isAssignedToTask(task)))
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF10B981)),
                   tooltip: 'Edit task',
@@ -3159,7 +3163,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   onPressed: () => _openEditTaskDialog(task),
                 ),
               if (_canDeleteTask) ...[
-                if (_canEditTask) const SizedBox(width: 2),
+                if (_canEditTask && (_currentUserRole == 'Super Admin' || _currentUserRole == 'admin' || _isAssignedToTask(task))) const SizedBox(width: 2),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 15, color: Colors.redAccent),
                   tooltip: 'Delete task',
@@ -3323,7 +3327,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       textSub: textSub,
       isDark: isDark,
       isAssignee: _isAssignedToTask(task) || _currentUserRole == 'Super Admin' || _currentUserRole == 'admin',
-      canEdit: _canEditTask,
+      canEdit: _canEditTask && (_currentUserRole == 'Super Admin' || _currentUserRole == 'admin' || _isAssignedToTask(task)),
       canDelete: _canDeleteTask,
       onTap: () => _openTaskDetailsDialog(task),
       onEdit: () => _openEditTaskDialog(task),
@@ -3904,7 +3908,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   isDark: isDark,
                   isMobile: isMobile,
                   isAssignee: _isAssignedToTask(t) || _currentUserRole == 'Super Admin' || _currentUserRole == 'admin',
-                  canEdit: _canEditTask,
+                  canEdit: _canEditTask && (_currentUserRole == 'Super Admin' || _currentUserRole == 'admin' || _isAssignedToTask(t)),
                   canDelete: _canDeleteTask,
                   onToggleStatus: () {
                     final isDone = t['status'] == 'DONE';
