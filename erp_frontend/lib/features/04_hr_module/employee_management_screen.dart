@@ -10,6 +10,18 @@ import 'departments_screen.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/network/api_client.dart';
 
+/// Employees with only "Employee Directory" access should land directly on
+/// their own profile. HR/Admin users keep the full lifecycle directory.
+bool shouldShowOwnEmployeeProfileOnly({
+  required String role,
+  required bool canManageStaff,
+  required bool canViewLifecycle,
+}) {
+  final normalized = role.trim().toLowerCase();
+  final isAdmin = normalized.contains('admin') || normalized.contains('executive');
+  return !isAdmin && !canManageStaff && !canViewLifecycle;
+}
+
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
 
@@ -20,7 +32,10 @@ class EmployeeManagementScreen extends StatefulWidget {
 class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   bool _canManageStaff = false;
   bool _canViewLifecycle = false;
+  bool _selfProfileOnly = false;
   int? _currentUserId;
+  String _currentUserEmail = '';
+  int? _ownEmployeeId;
   List<dynamic> _employees = [];
   List<dynamic> _departments = [];
   bool _isLoading = true;
@@ -38,8 +53,12 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   @override
   void initState() {
     super.initState();
-    _checkPermissions();
-    _fetchEmployees();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _checkPermissions();
+    await _fetchEmployees();
   }
 
   Future<void> _checkPermissions() async {
@@ -47,12 +66,39 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     final allowedLifecycle = await SessionManager.hasPermission('hr_view_lifecycle');
     final session = await SessionManager.getUserSession();
     if (mounted) {
+      final role = (session['role'] ?? '').toString();
       setState(() {
         _canManageStaff = allowedStaff;
         _canViewLifecycle = allowedLifecycle;
         _currentUserId = session['userId'];
+        _currentUserEmail = (session['email'] ?? '').toString();
+        _ownEmployeeId = session['employeeId'] != null
+            ? int.tryParse(session['employeeId'].toString())
+            : null;
+        _selfProfileOnly = shouldShowOwnEmployeeProfileOnly(
+          role: role,
+          canManageStaff: allowedStaff,
+          canViewLifecycle: allowedLifecycle,
+        );
       });
     }
+  }
+
+  int? _resolveOwnEmployeeId() {
+    if (_ownEmployeeId != null) return _ownEmployeeId;
+
+    final email = _currentUserEmail.trim().toLowerCase();
+    for (final emp in _employees) {
+      final empUserId = int.tryParse(emp['user_id']?.toString() ?? '');
+      if (_currentUserId != null && empUserId == _currentUserId) {
+        return int.tryParse(emp['employee_id']?.toString() ?? '');
+      }
+      final empEmail = emp['email']?.toString().trim().toLowerCase() ?? '';
+      if (email.isNotEmpty && empEmail == email) {
+        return int.tryParse(emp['employee_id']?.toString() ?? '');
+      }
+    }
+    return null;
   }
 
   // 1. Fetch All Employees & Departments from Backend
@@ -63,6 +109,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         _employees = data['data'] ?? [];
+        if (_selfProfileOnly) _ownEmployeeId = _resolveOwnEmployeeId();
       }
       try {
         final deptRes = await ApiClient.get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
@@ -74,6 +121,21 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       setState(() => _isLoading = false);
     } catch (_) {
       setState(() => _isLoading = false);
+    }
+
+    if (_selfProfileOnly && _ownEmployeeId != null && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EmployeeDetailsScreen(
+              employeeId: _ownEmployeeId,
+              selfProfileOnly: true,
+            ),
+          ),
+        );
+      });
     }
   }
 
@@ -836,6 +898,29 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     final textTitle = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSub = isDark ? Colors.white.withValues(alpha: 0.6) : const Color(0xFF475569);
     final cardBorder = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.7);
+
+    if (_selfProfileOnly) {
+      return Scaffold(
+        body: BotanicalBackground(
+          cleanDesktop: MediaQuery.sizeOf(context).width >= 900,
+          showThemeToggle: false,
+          child: SafeArea(
+            child: Center(
+              child: _isLoading || _ownEmployeeId != null
+                  ? const CircularProgressIndicator(color: Color(0xFF059669))
+                  : Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Your employee profile is not linked yet. Please contact HR.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: textTitle, fontSize: 14),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: BotanicalBackground(cleanDesktop: MediaQuery.sizeOf(context).width >= 900, 

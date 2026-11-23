@@ -231,7 +231,9 @@ abstract final class AppNavCatalog {
           label: 'General Tasks',
           icon: Icons.checklist_outlined,
           module: AppNavModule.projects,
-          permissionKey: 'tasks_view',
+          // Every non-admin role can create self tasks, including HR managers.
+          // Their task query stays scoped to their own employee record.
+          permissionKey: 'tasks_create_self',
           // Rendered inside the dashboard workspace (like Projects & Tasks),
           // not as a separate pushed route, so it always becomes visible.
           targetMenu: 'General Tasks',
@@ -360,15 +362,56 @@ abstract final class AppNavResolver {
     return permissions[permissionKey] ?? false;
   }
 
+  /// Sidebar-only entries hidden from a Projects module manager.
+  ///
+  /// The backend permissions stay untouched, so direct route guards still
+  /// behave exactly as before; only the navigation list is simplified.
+  static const Set<String> _hiddenForProjectsManager = {
+    'projects_create',
+    'projects_workspace',
+    'tasks_assign',
+    'tasks_self',
+    'tasks_edit',
+  };
+
+  /// Shared Projects-module-manager detection.
+  ///
+  /// Used for sidebar simplification and for the General Tasks query so the
+  /// manager sees all non-private tasks without duplicating the role rules.
+  static bool isProjectsModuleManager(
+    String role,
+    Map<String, bool> permissions,
+  ) {
+    if (isSuperAdmin(role)) return false;
+
+    final lower = role.trim().toLowerCase();
+    final roleNamesProjectManager = lower.contains('project') &&
+        (lower.contains('manager') || lower.contains('supervisor'));
+
+    // The seeded backend role is simply "Module Manager"; the granted
+    // permissions tell us which module that manager owns.
+    final seededProjectsManager = lower == 'module manager' &&
+        (permissions['tasks_view'] ?? false) &&
+        !(permissions['hr_view_directory'] ?? false);
+
+    return roleNamesProjectManager || seededProjectsManager;
+  }
+
   static List<AppNavGroup> resolve(
     String role,
     Map<String, bool> permissions,
   ) {
     final resolved = <AppNavGroup>[];
+    final hideProjectsManagerItems = isProjectsModuleManager(role, permissions);
 
     for (final group in AppNavCatalog.groups) {
       final items = group.items
-          .where((item) => canOpen(role, permissions, item.permissionKey))
+          .where(
+            (item) =>
+                canOpen(role, permissions, item.permissionKey) &&
+                !(hideProjectsManagerItems &&
+                    _hiddenForProjectsManager.contains(item.id)),
+          )
           .toList();
       if (items.isEmpty) continue;
       resolved.add(AppNavGroup(

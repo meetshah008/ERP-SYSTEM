@@ -13,7 +13,15 @@ import 'employee_edit_screen.dart';
 class EmployeeDetailsScreen extends StatefulWidget {
   final dynamic employeeId;
 
-  const EmployeeDetailsScreen({super.key, required this.employeeId});
+  /// When an Employee opens their own profile from Employee Directory, only
+  /// the profile/lifecycle tabs are relevant. HR/Admin keep the full view.
+  final bool selfProfileOnly;
+
+  const EmployeeDetailsScreen({
+    super.key,
+    required this.employeeId,
+    this.selfProfileOnly = false,
+  });
 
   @override
   State<EmployeeDetailsScreen> createState() => _EmployeeDetailsScreenState();
@@ -68,7 +76,9 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
   Future<void> _initScreen() async {
     setState(() => _isLoading = true);
     await _checkUserPermissions();
-    final targetLength = _canManageStaff ? 5 : 4;
+    final targetLength = widget.selfProfileOnly
+        ? 2
+        : (_canManageStaff ? 5 : 4);
     _tabController = TabController(length: targetLength, vsync: this);
     await _fetchFullProfile(setLoadingState: false);
     if (mounted) {
@@ -1937,34 +1947,36 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                       ),
                                     ),
                                   ),
-                                const Tab(
-                                  height: 36,
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 10),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.history_rounded, size: 14),
-                                        SizedBox(width: 6),
-                                        Text('Attendance Logs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                      ],
+                                if (!widget.selfProfileOnly) ...[
+                                  const Tab(
+                                    height: 36,
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 10),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.history_rounded, size: 14),
+                                          SizedBox(width: 6),
+                                          Text('Attendance Logs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const Tab(
-                                  height: 36,
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 10),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.account_balance_wallet_outlined, size: 14),
-                                        SizedBox(width: 6),
-                                        Text('Payroll', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                      ],
+                                  const Tab(
+                                    height: 36,
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 10),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.account_balance_wallet_outlined, size: 14),
+                                          SizedBox(width: 6),
+                                          Text('Payroll', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
@@ -1983,8 +1995,10 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                         _buildTab2Employment(cardBg, cardBorder, textTitle, textSub, isDark),
                         if (_canManageStaff)
                           _buildTab3Permissions(cardBg, cardBorder, textTitle, textSub, isDark),
-                        _buildTab4AttendanceLeaves(cardBg, cardBorder, textTitle, textSub, isDark),
-                        _buildTab5Payroll(cardBg, cardBorder, textTitle, textSub, isDark),
+                        if (!widget.selfProfileOnly) ...[
+                          _buildTab4AttendanceLeaves(cardBg, cardBorder, textTitle, textSub, isDark),
+                          _buildTab5Payroll(cardBg, cardBorder, textTitle, textSub, isDark),
+                        ],
                       ],
                     ),
                   ),
@@ -2314,14 +2328,16 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                   icon: Icon(Icons.security_rounded, size: 16),
                                   text: 'Access & Permissions',
                                 ),
-                              const Tab(
-                                icon: Icon(Icons.history_rounded, size: 16),
-                                text: 'Attendance & Leaves',
-                              ),
-                              const Tab(
-                                icon: Icon(Icons.account_balance_wallet_outlined, size: 16),
-                                text: 'Salary & Payroll',
-                              ),
+                              if (!widget.selfProfileOnly) ...[
+                                const Tab(
+                                  icon: Icon(Icons.history_rounded, size: 16),
+                                  text: 'Attendance & Leaves',
+                                ),
+                                const Tab(
+                                  icon: Icon(Icons.account_balance_wallet_outlined, size: 16),
+                                  text: 'Salary & Payroll',
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -2351,8 +2367,10 @@ class _EmployeeDetailsScreenState extends State<EmployeeDetailsScreen>
                                
                                 if (_canManageStaff)
                                   _buildTab3Permissions(cardBg, cardBorder, textTitle, textSub, isDark),
-                                _buildTab4AttendanceLeaves(cardBg, cardBorder, textTitle, textSub, isDark),
-                                _buildTab5Payroll(cardBg, cardBorder, textTitle, textSub, isDark),
+                                if (!widget.selfProfileOnly) ...[
+                                  _buildTab4AttendanceLeaves(cardBg, cardBorder, textTitle, textSub, isDark),
+                                  _buildTab5Payroll(cardBg, cardBorder, textTitle, textSub, isDark),
+                                ],
                               ],
                             ),
                           ),

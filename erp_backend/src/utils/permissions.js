@@ -108,7 +108,7 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
     hr_manage_staff: false,
     hr_manage_departments: false,
     hr_view_lifecycle: false,
-    attendance_view_logs: true,           // View punch logs
+    attendance_view_logs: false,          // View punch logs - admin can grant manually
     attendance_import_excel: false,
     attendance_override: false,
     attendance_biometric_manage: false,

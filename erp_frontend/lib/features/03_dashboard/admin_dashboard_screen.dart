@@ -1340,7 +1340,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           initialTopView: 0,
         );
       case 'General Tasks':
-        if (!_hasPermission('tasks_view')) {
+        if (!_hasPermission('tasks_create_self')) {
           return _buildAccessDeniedView('General Tasks');
         }
         // Same existing board, opened directly on its General Tasks tab.

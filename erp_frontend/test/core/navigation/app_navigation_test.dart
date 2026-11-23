@@ -29,6 +29,7 @@ void main() {
           'hr_view_directory',
           'attendance_view_logs',
           'leaves_apply',
+          'tasks_create_self',
         ]),
       );
 
@@ -37,6 +38,8 @@ void main() {
       expect(visible, contains('Employee Directory'));
       expect(visible, contains('Biometric Attendance'));
       expect(visible, contains('Staff Leave Management'));
+      // HR managers get their own General Tasks board, but not Projects.
+      expect(visible, contains('General Tasks'));
 
       // Items removed from the sidebar stay hidden even when permitted.
       expect(visible, isNot(contains('Employee Management')));
@@ -49,7 +52,10 @@ void main() {
       expect(visible, isNot(contains('Payroll & Increments')));
       expect(visible, isNot(contains('Accounts & Finance')));
       // Settings & Logs is a personal workspace item, visible to every role.
-      expect(groups.map((g) => g.id), equals(['general', 'hr', 'system']));
+      expect(
+        groups.map((g) => g.id),
+        equals(['general', 'hr', 'projects', 'system']),
+      );
     });
 
     test('revoking a permission removes its item, granting one adds it', () {
@@ -82,7 +88,6 @@ void main() {
         'Employee',
         _perms(const [
           'hr_view_directory',
-          'attendance_view_logs',
           'leaves_apply',
           'tasks_view',
           'tasks_create_self',
@@ -94,7 +99,6 @@ void main() {
       expect(visible, containsAll([
         'Dashboard',
         'Employee Directory',
-        'Biometric Attendance',
         'Staff Leave Management',
         'Projects & Tasks',
         'Personal Tasks',
@@ -106,8 +110,43 @@ void main() {
       expect(visible, isNot(contains('Department Management')));
       expect(visible, contains('Settings & Logs'));
       expect(visible, isNot(contains('Timesheets')));
+      expect(visible, isNot(contains('Biometric Attendance')));
       expect(visible, isNot(contains('Attendance Override')));
       expect(visible, isNot(contains('Advanced Biometric Tools')));
+    });
+
+    test('projects module manager sees only the project board in the sidebar', () {
+      // Both the seeded backend label and an explicit project-manager label
+      // are treated the same; the underlying permissions are unchanged.
+      for (final role in const ['Module Manager', 'Project Module Manager']) {
+        final perms = _perms(const [
+          'tasks_view',
+          'projects_create',
+          'projects_edit',
+          'tasks_create_assign',
+          'tasks_create_self',
+          'tasks_edit',
+          'tasks_log_timesheet',
+        ]);
+        final visible = labels(AppNavResolver.resolve(role, perms));
+
+        expect(visible, contains('Projects & Tasks'));
+        expect(visible, contains('General Tasks'));
+
+        for (final label in const [
+          'Create Project',
+          'Project Workspace',
+          'Assign Task',
+          'Personal Tasks',
+          'Task Editing',
+        ]) {
+          expect(
+            visible,
+            isNot(contains(label)),
+            reason: '$label should be hidden for $role',
+          );
+        }
+      }
     });
 
     test('Super Admin resolver exposes everything (original UI stays in use)', () {
@@ -180,7 +219,7 @@ void main() {
     test('General Tasks targets the dashboard tab that opens the board', () {
       final item = AppNavCatalog.itemById('general_tasks');
       expect(item, isNotNull);
-      expect(item!.permissionKey, equals('tasks_view'));
+      expect(item!.permissionKey, equals('tasks_create_self'));
       expect(item.targetMenu, equals('General Tasks'));
       expect(item.screenBuilder, isNull);
       // The dashboard renders this screen with its General Tasks tab active.

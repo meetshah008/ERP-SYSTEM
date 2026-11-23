@@ -302,8 +302,22 @@ async function ensureAdminEmployeeRecords() {
       let branchId = null;
       try {
         const [bRows] = await db.query('SELECT branch_id FROM BRANCH WHERE company_id = ? LIMIT 1', [u.company_id]);
-        if (bRows.length > 0) branchId = bRows[0].branch_id;
+        if (bRows.length > 0) {
+          branchId = bRows[0].branch_id;
+        } else if (u.company_id) {
+          // EMPLOYEE.branch_id is NOT NULL; create a default branch for legacy/company-setup gaps.
+          const [branchInsert] = await db.query(
+            'INSERT INTO BRANCH (company_id, name, address) VALUES (?, ?, ?)',
+            [u.company_id, 'Head Office', 'Main Office']
+          );
+          branchId = branchInsert.insertId;
+        }
       } catch (_) {}
+
+      if (!branchId) {
+        console.warn(`[AutoSync] Skipping employee auto-create for user ${u.user_id}: no branch available.`);
+        continue;
+      }
 
       let deptId = null;
       try {

@@ -7,6 +7,27 @@ import '../../core/network/api_client.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/widgets/botanical_background.dart';
 
+/// Full assign-worker list for the task form.
+///
+/// Project team members are kept first (so they remain easy to spot) but the
+/// remaining active employees are always appended. The old code stopped at the
+/// project member list, which left the picker with only one or two names.
+List<dynamic> buildAssignableWorkers(
+  List<dynamic> employees, {
+  List<dynamic> priorityWorkers = const [],
+}) {
+  final seenIds = <int>{};
+  final workers = <dynamic>[];
+
+  for (final worker in [...priorityWorkers, ...employees]) {
+    if (worker is! Map) continue;
+    final empId = int.tryParse(worker['employee_id']?.toString() ?? '');
+    if (empId == null || empId <= 0 || !seenIds.add(empId)) continue;
+    workers.add(worker);
+  }
+  return workers;
+}
+
 class TaskFormScreen extends StatefulWidget {
   final Map<String, dynamic>? task;
   final int? preselectedProjectId;
@@ -56,6 +77,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   bool _isLoadingDepts = true;
 
   List<dynamic> _availableWorkers = [];
+  List<dynamic> _allEmployees = [];
+  List<dynamic> _projectWorkers = [];
   bool _isLoadingProjectMembers = false;
   bool _canAssignOthers = true;
   bool _isPrivateTask = false;
@@ -94,7 +117,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       }
     }
 
-    _availableWorkers = List.from(widget.employees);
+    _allEmployees = List.from(widget.employees);
+    _availableWorkers = buildAssignableWorkers(_allEmployees);
 
     if (t != null && t['priority'] != null) {
       final p = t['priority'].toString().toUpperCase();
@@ -162,24 +186,40 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     } catch (_) {}
 
     await _fetchDepartments();
+    await _fetchEmployees();
     await _loadProjectContext(_selectedProjectId, isInitial: true);
+  }
+
+  Future<void> _fetchEmployees() async {
+    try {
+      final res = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['data'] is List) {
+          final fetched = (data['data'] as List).cast<dynamic>();
+          if (fetched.isNotEmpty) {
+            _allEmployees = fetched;
+            if (mounted) {
+              setState(() {
+                _availableWorkers = buildAssignableWorkers(
+                  _allEmployees,
+                  priorityWorkers: _projectWorkers,
+                );
+                _ensureValidAssignees();
+              });
+            }
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadProjectContext(int? projectId, {bool isInitial = false}) async {
     if (projectId == null) {
-      List<dynamic> workers = List.from(widget.employees);
-      if (_selectedDeptId != null) {
-        final deptWorkers = widget.employees.where((e) {
-          final dId = int.tryParse(e['department_id']?.toString() ?? '');
-          return dId == _selectedDeptId;
-        }).toList();
-        if (deptWorkers.isNotEmpty) {
-          workers = deptWorkers;
-        }
-      }
       if (mounted) {
         setState(() {
-          _availableWorkers = workers;
+          _projectWorkers = [];
+          _availableWorkers = buildAssignableWorkers(_allEmployees.isNotEmpty ? _allEmployees : widget.employees);
           if (_departments.isNotEmpty && _selectedDeptId == null) {
             _selectedDeptId = _departments[0]['department_id'];
           }
@@ -286,7 +326,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           if (matchedDeptId != null) {
             _selectedDeptId = matchedDeptId;
           }
-          _availableWorkers = projectWorkers;
+          _projectWorkers = projectWorkers;
+          _availableWorkers = buildAssignableWorkers(
+            _allEmployees.isNotEmpty ? _allEmployees : widget.employees,
+            priorityWorkers: projectWorkers,
+          );
           _isLoadingProjectMembers = false;
           _ensureValidAssignees();
         });
@@ -294,7 +338,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _availableWorkers = widget.employees;
+          _availableWorkers = buildAssignableWorkers(_allEmployees.isNotEmpty ? _allEmployees : widget.employees);
           _isLoadingProjectMembers = false;
           _ensureValidAssignees();
         });
@@ -1082,9 +1126,15 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                             ),
                                           ),
                                           onSelected: (empId) {
-                                            if (!_selectedAssigneeIds.contains(empId)) {
-                                              setState(() => _selectedAssigneeIds.add(empId));
-                                            }
+                                            setState(() {
+                                              if (_selectedAssigneeIds.contains(empId)) {
+                                                if (_selectedAssigneeIds.length > 1) {
+                                                  _selectedAssigneeIds.remove(empId);
+                                                }
+                                              } else {
+                                                _selectedAssigneeIds.add(empId);
+                                              }
+                                            });
                                           },
                                           itemBuilder: (context) {
                                             return _availableWorkers.map<PopupMenuItem<int>>((e) {
@@ -1102,7 +1152,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                                     const SizedBox(width: 8),
                                                     Expanded(
                                                       child: Text(
-                                                        '${e['full_name']} (${e['emp_code'] ?? 'EMP'})',
+                                                        '${e['full_name']} (${e['emp_code'] ?? 'EMP'})' + ((e['department_name'] != null && e['department_name'].toString().isNotEmpty) ? ' • ' + e['department_name'].toString() : ''),
                                                         style: TextStyle(
                                                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                                         ),

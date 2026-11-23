@@ -10,6 +10,27 @@ import '../../core/network/session_manager.dart';
 import 'biometric_import_screen.dart';
 import '../../core/network/api_client.dart';
 
+/// True when a punch value cannot be used for work-duration calculation.
+bool isMissingAttendanceTime(dynamic value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty || text == '--' || text == '--:--') return true;
+  if (text == '00:00' || text == '00:00:00') return true;
+  return text.toLowerCase() == 'null';
+}
+
+bool hasMissingPunchTimes(Map<String, dynamic> record) {
+  return isMissingAttendanceTime(record['check_in_time']) ||
+      isMissingAttendanceTime(record['check_out_time']);
+}
+
+int countRecordsWithMissingPunchTimes(Iterable<dynamic> records) {
+  return records.where((record) {
+    if (record is! Map) return false;
+    return isMissingAttendanceTime(record['check_in_time']) ||
+        isMissingAttendanceTime(record['check_out_time']);
+  }).length;
+}
+
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
 
@@ -182,6 +203,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           'half_day_count': 0,
           'absent_count': 0,
           'total_minutes': 0,
+          'missing_data_count': 0,
         };
       }
 
@@ -200,6 +222,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       }
 
       emp['total_minutes'] = (emp['total_minutes'] as int) + _getRecordWorkMinutes(r);
+
+      if (isMissingAttendanceTime(r['check_in_time']) ||
+          isMissingAttendanceTime(r['check_out_time'])) {
+        emp['missing_data_count'] = (emp['missing_data_count'] as int) + 1;
+      }
     }
 
     return grouped.values.toList();
@@ -1130,6 +1157,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             DataColumn(label: Text('EMP CODE')),
                             DataColumn(label: Text('BIOMETRIC ID')),
                             DataColumn(label: Text('MONTH DAYS')),
+                            DataColumn(label: Text('MISSING DATA')),
                             DataColumn(label: Text('PRESENT')),
                             DataColumn(label: Text('LATE')),
                             DataColumn(label: Text('HALF-DAY')),
@@ -1144,8 +1172,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             final present = emp['present_count'] ?? 0;
                             final lateCount = emp['late_count'] ?? 0;
                             final halfDay = emp['half_day_count'] ?? 0;
-                            final totalMins = emp['total_minutes'] ?? 0;
+                            final totalMins = int.tryParse('${emp['total_minutes'] ?? 0}') ?? 0;
                             final durationStr = '${totalMins ~/ 60}h ${totalMins % 60}m';
+                            final missingDataCount = int.tryParse('${emp['missing_data_count'] ?? 0}') ?? 0;
 
                             return DataRow(
                               onSelectChanged: (_) => _openEmployeeHistoryModal(emp),
@@ -1214,7 +1243,38 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                   ),
                                 ),
 
-                                // 6. Present Count Badge
+                                // 6. Missing In/Out value warning for admin
+                                DataCell(
+                                  Tooltip(
+                                    message: missingDataCount > 0
+                                        ? '$missingDataCount record(s) have missing In/Out time. Work-duration calculation may be incomplete.'
+                                        : 'In/Out time available for all records.',
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: missingDataCount > 0
+                                            ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
+                                            : const Color(0xFF64748B).withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: missingDataCount > 0
+                                              ? const Color(0xFFF59E0B).withValues(alpha: 0.40)
+                                              : const Color(0xFFE2E8F0),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        missingDataCount > 0 ? '$missingDataCount Missing Data' : 'OK',
+                                        style: TextStyle(
+                                          color: missingDataCount > 0 ? const Color(0xFFB45309) : textSub,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                // 7. Present Count Badge
                                 DataCell(
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

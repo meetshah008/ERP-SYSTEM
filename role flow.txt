@@ -1,0 +1,438 @@
+Bilkul. Poori chain ek hi line me samjho:
+
+**Login → backend permissions → local session → AppNavResolver → sidebar/content/task query.**
+
+Koi alag-alag hardcoded sidebar nahi hai. Role + stored permission map se sab decide hota hai.
+
+---
+
+## 1. Login ke time permission kahan se aati hai?
+
+**Backend:** `erp_backend/src/modules/01_auth/auth.controller.js`
+
+Login me backend:
+1. `USER` table se `role_name` nikalta hai.
+2. `EMPLOYEE` + `DEPARTMENT` se employee aur department dhundta hai.
+3. `getDefaultPermissions(role_name, deptName)` call karta hai.
+4. Phir `EMPLOYEE_PERMISSION` table se manually granted/revoked permissions merge karta hai:
+
+```js
+permissions = { ...defaultDefaults, ...custom };
+```
+
+Matlab admin ne kisi employee ko manually kuch permission diya ya cheena, to wo default preset ko override karta hai.
+
+Phir response me bhejta hai:
+
+```json
+{
+  "user": { "id", "email", "role", "employee_id", "companyName" },
+  "permissions": { ... }
+}
+```
+
+---
+
+## 2. Default permissions kaise banthi hai?
+
+**File:** `erp_backend/src/utils/permissions.js`
+
+### Super Admin / Admin / Executive
+Naam me `admin` ya `executive` hai to sab permissions `true`.
+
+### Module Manager
+Role me `manager`/`supervisor` hai to department ke basis par module decide hota hai:
+
+- HR department → HR permissions
+- IT/Project/Tech department → Projects permissions
+- Inventory/Store → Inventory permissions
+- Manufacturing/Production → Manufacturing permissions
+- Finance/Accounts → Finance permissions
+
+Example: `Module Manager` + `Projects` department:
+- `tasks_view: true`
+- `projects_create: true`
+- `tasks_create_assign: true`
+- `tasks_edit: true`
+- HR wali sab `false`
+
+### Employee
+Current defaults:
+- `hr_view_directory: true`
+- `leaves_apply: true`
+- `tasks_view: true`
+- `tasks_create_self: true`
+- `attendance_view_logs: false` ← ye humne change kiya tha
+- baaki management permissions `false`
+
+Important: purane saved permissions DB me already ho to naya default tab nahi badalta. Uske liye admin ko manually update ya fresh login/refresh chahiye.
+
+---
+
+## 3. Frontend session kya store karta hai?
+
+**File:** `erp_frontend/lib/core/network/session_manager.dart`
+
+`login_screen.dart` response se y sab `SessionManager.saveSession()` me deta hai:
+
+- token
+- email
+- role
+- companyName
+- userId
+- companyId
+- employeeId
+- **permissions map**
+
+Web me ye SharedPreferences → LocalStorage me save hota hai.
+
+### Special rule
+```dart
+if (role == 'Super Admin') return {};
+```
+Super Admin ke liye permissions map empty hota hai, par `hasPermission()` hamesha `true` return karta hai. Isliye Super Admin ka purana UI/behavior safe rehta hai.
+
+---
+
+## 4. Sidebar kaise decide hoti hai?
+
+### Catalog
+**File:** `erp_frontend/lib/core/navigation/app_navigation.dart`
+
+`AppNavCatalog` ek **single source of truth** hai. Har nav item ke paas:
+
+```dart
+permissionKey: 'hr_view_directory'
+```
+
+ya
+
+```dart
+permissionKey: null
+```
+
+`null` ka matlab: **har role ko dikhega**. Isliye `Settings & Logs` sabko dikhta hai.
+
+Examples:
+
+| Sidebar item | Permission key |
+|---|---|
+| Employee Directory | `hr_view_directory` |
+| Biometric Attendance | `attendance_view_logs` |
+| Projects & Tasks | `tasks_view` |
+| General Tasks | `tasks_create_self` |
+| Settings & Logs | `null` |
+
+### Resolver
+`AppNavResolver.resolve(role, permissions)`:
+
+1. Har item ki permission check karta hai.
+2. Jis item ki permission nahi hai, usse hata deta hai.
+3. Jis group me kuch bhi na bache, us group ko hide kar deta hai.
+4. Projects Module Manager ke liye 5 extra items hide karta hai.
+
+### PMM ke 5 hidden items
+```dart
+projects_create
+projects_workspace
+tasks_assign
+tasks_self
+tasks_edit
+```
+
+Matlab UI se chhupe:
+- Create Project
+- Project Workspace
+- Assign Task
+- Personal Tasks
+- Task Editing
+
+Backend permissions nahi chheeni gayi — sirf sidebar simplify ki gayi hai.
+
+---
+
+## 5. “Kaun Projects Module Manager hai” kaise decide hota hai?
+
+Yahi function dono jagah use hota hai:
+
+**`AppNavResolver.isProjectsModuleManager(role, permissions)`**
+
+Logic:
+
+```dart
+role me "project" + "manager/supervisor" ho
+```
+**ya**
+
+```dart
+role == "Module Manager"
+&& permissions['tasks_view'] == true
+&& permissions['hr_view_directory'] == false
+```
+
+Dosra case isliye hai kyunki aapke backend me seeded role sirf **"Module Manager"** hai. Uska actual module department se decide hota hai. Isliye frontend permissions se samajhta hai:
+
+- `tasks_view = true`, `hr_view_directory = false` → Projects Manager
+- `hr_view_directory = true` → HR Manager
+
+Ye same detection sidebar aur task query dono me use hoti hai, to dono jagah rule ek hi hai.
+
+---
+
+## 6. Sidebar click par kya hota hai?
+
+**File:** `admin_dashboard_screen.dart`
+
+`_onDynamicNavSelected(item)`:
+
+1. Permission dobara check karta hai.
+2. Agar nahi hai → `AccessDeniedScreen`.
+3. `targetMenu` hai → dashboard ka andar ka tab switch hota hai.
+4. `screenBuilder` hai → screen push hoti hai, guarded.
+
+Purane shortcuts bhi `PermissionGate` se guarded hain. Isliye direct push karne par bhi blocked screen nahi khulti.
+
+### Super Admin exception
+```dart
+bool get _useDynamicSidebar => widget.role != 'Super Admin';
+```
+
+Super Admin ko purana 270px sidebar dikhta hai. Baaki sab dynamic sidebar.
+
+---
+
+## 7. Role-wise ab kya dikhta hai?
+
+### Super Admin
+- Purana sidebar
+- Sab modules
+- Desktop me Projects/General Tasks dono tabs
+- Poori Employee Directory
+- Saare tasks
+
+### Admin lowercase
+- Backend me `admin` bhi full permission pretend karta hai
+- Task screen ka switcher bhi `admin` ke liye dikhta hai
+- Dynamic sidebar use karta hai, par permissions full hoti hain
+
+### Projects Module Manager
+Sidebar me dikhta hai:
+- Dashboard
+- Projects & Tasks
+- General Tasks
+- Settings & Logs
+
+Hide hai:
+- Create Project
+- Project Workspace
+- Assign Task
+- Personal Tasks
+- Task Editing
+- HR + Inventory + Finance sab
+
+Task query me **employee_id/user_id nahi bheji jaati**, isliye saare visible tasks milte hain. Private general tasks backend khud chhupa deta hai.
+
+Desktop ke andar wale `Projects / General Tasks` tabs bhi hide hain. Unki jagah sidebar items hain.
+
+### HR Module Manager
+Sidebar me dikhta hai:
+- Employee Directory
+- Biometric Attendance
+- Staff Leave Management
+- General Tasks
+- Settings & Logs
+
+`General Tasks` isliye dikhta hai kyunki `tasks_create_self: true` hota hai. Lekin task query **self-scoped** rehti hai, matlab sirf apne tasks.
+
+Projects module nahi dikhta.
+
+### Employee
+Sidebar me dikhta hai:
+- Dashboard
+- Employee Directory
+- Projects & Tasks
+- General Tasks
+- Staff Leave Management
+- Settings & Logs
+
+Nahi dikhta:
+- Biometric Attendance default
+- Employee Onboarding
+- Payroll
+- Department Management
+- Assign Task / Task Editing
+
+Employee Directory khulte hi apna **Employee Profile & Lifecycle** aata hai, poori directory list nahi.
+
+---
+
+## 8. Task visibility kaise control hoti hai?
+
+### Frontend query
+**File:** `erp_frontend/lib/features/05_tasks/project_tasks_screen.dart`
+
+```dart
+buildTaskQueryParams(...)
+```
+
+- PMM → `[]` matlab sirf `GET /api/tasks`
+- Employee / HR Manager → `employee_id`, `user_id`, `role`
+- Super Admin → sirf `role`
+
+### Backend privacy
+**File:** `erp_backend/src/modules/03_tasks/task.controller.js`
+
+SQL me ye rule hai:
+
+- Project task → project members ko dikhta hai
+- General task with `is_private = 0` → sabko dikhta hai
+- General task with `is_private = 1` → sirf assigned employee ko
+
+Isliye PMM ko “saare general tasks” dene ke liye frontend ne scope hataaya, par security backend rule se hi zinda hai.
+
+---
+
+## 9. Assign Workers dropdown fix
+
+**File:** `task_form_screen.dart`
+
+Pehle sirf project team dikhti thi, isliye bahar ke employees assign nahi ho paate the.
+
+Ab `buildAssignableWorkers()`:
+
+1. Project team pehle
+2. Uske baad saare active employees append
+3. Duplicate `employee_id` ignore
+4. Invalid ID ignore
+
+Authorization change nahi hua — sirf dropdown data complete hua.
+
+---
+
+## 10. Employee Directory → self profile
+
+**File:** `employee_management_screen.dart`
+
+```dart
+shouldShowOwnEmployeeProfileOnly(...)
+```
+
+True hota hai jab:
+
+- role admin/executive na ho
+- `hr_manage_staff = false`
+- `hr_view_lifecycle = false`
+
+Matlab plain Employee.
+
+Phir code:
+1. session se `employeeId`, `userId`, `email` leta hai
+2. employee list me apna record dhundta hai
+3. `pushReplacement` karta hai:
+
+```dart
+EmployeeDetailsScreen(
+  employeeId: ownId,
+  selfProfileOnly: true,
+)
+```
+
+### Self profile me sirf 2 tabs
+- Overview & Metrics
+- Personal & Job Profile
+
+Hide:
+- Attendance & Leaves
+- Salary & Payroll
+- Permissions
+
+HR/Admin ko poora profile waisa hi.
+
+---
+
+## 11. Attendance “MISSING DATA” column
+
+**File:** `attendance_screen.dart`
+
+Ye **data quality warning** hai, calendar-day count nahi.
+
+Har attendance row me check hota hai:
+
+```dart
+check_in_time
+check_out_time
+```
+
+Agar koi bhi value hai:
+- `null`
+- empty
+- `--`
+- `--:--`
+- `00:00:00`
+
+to count badhta hai.
+
+Cell dikhta hai:
+
+- `1 Missing Data`
+- `3 Missing Data`
+- ya `OK`
+
+Tooltip:
+
+> `3 record(s) have missing In/Out time. Work-duration calculation may be incomplete.`
+
+Ye column **sirf desktop table** me hai. Mobile cards bilkul unchanged hain.
+
+---
+
+## 12. Desktop theme
+
+**File:** `erp_frontend/lib/core/theme/enterprise_theme.dart`
+
+Palette:
+
+- Emerald: `#059669`, `#047857`
+- Canvas: `#F8FAFC`
+- Surface: `#FFFFFF`
+- Border: `#E2E8F0`
+- Text: `#0F172A`, `#64748B`
+- Sidebar: `#13241B`, `#0F172A`
+
+**`BotanicalBackground(cleanDesktop: width >= 900)`**
+
+- Desktop/web ≥900 → flat clean canvas, no leaves/gradients/watermarks
+- Mobile <900 → purana botanical UI waisa hi
+
+Header search bar hata diya gaya. `Settings & Logs` sabko dikhta hai.
+
+---
+
+## 13. Tests aur build
+
+Verification jo chalayi:
+
+- `flutter analyze` → **0 errors**
+  127 pre-existing warnings hain, naye errors nahi.
+- `flutter test` → **24/24 passed**
+- `flutter build web --release --no-wasm-dry-run` → success
+- `web_dist/` refresh kiya
+- `vercel.json` aur `team.jpg` preserve kiye
+
+Changes **uncommitted** hain. HEAD abhi bhi `42f3631`.
+
+Rollback ke liye scratch me baselines maujud hain:
+- `scratch/theme_baseline_20261121_1155`
+- `scratch/project_tabs_role_baseline_20261121`
+- `scratch/employee_directory_self_profile_baseline_20261123`
+- `scratch/attendance_missing_duration_baseline_20261123`
+
+Agar aap bole “wapas pehle jaisa”, to in baselines se exactly waisa restore kar sakta hoon.
+
+---
+
+## Ek line me yaad rakhne wali baat
+
+> **Backend role+department se default permissions banata hai → frontend unhe session me store karta hai → AppNavResolver unhi permissions se sidebar aur page access decide karta hai → PMM ki additional simplification ek shared helper se dono sidebar aur task query me lagti hai.**
+
+Aur jo bhi aapne bola tha “mobile UI bilkul change mat karna” — wo abhi bhi follow ho raha hai.

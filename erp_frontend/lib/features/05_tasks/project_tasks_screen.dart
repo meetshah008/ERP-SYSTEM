@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/navigation/app_navigation.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/network/api_client.dart';
 import 'task_details_screen.dart';
@@ -12,6 +13,41 @@ import 'project_edit_screen.dart';
 import 'task_form_screen.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/theme/enterprise_theme.dart';
+
+/// Desktop-only Projects / General Tasks switcher visibility.
+///
+/// Managers and Employees already have both views in the sidebar, so they do
+/// not need the duplicate tabs inside the screen. Admin/Super Admin keep the
+/// original switcher.
+bool shouldShowDesktopViewSwitcher(String role) {
+  final normalized = role.trim().toLowerCase();
+  return normalized == 'super admin' || normalized == 'admin';
+}
+
+/// Query params for `GET /api/tasks`.
+///
+/// A Projects module manager must not be narrowed to their own employee id;
+/// otherwise the manager only sees self-assigned work. The backend already
+/// hides other employees' private (`is_private = 1`) general tasks, so no
+/// params is the safest "all visible tasks" request for that role.
+List<String> buildTaskQueryParams({
+  required String role,
+  required Map<String, bool> permissions,
+  int? employeeId,
+  Object? userId,
+}) {
+  if (AppNavResolver.isProjectsModuleManager(role, permissions)) {
+    return const <String>[];
+  }
+
+  final params = <String>[];
+  if (role != 'Super Admin') {
+    if (employeeId != null) params.add('employee_id=$employeeId');
+    if (userId != null) params.add('user_id=$userId');
+  }
+  params.add('role=$role');
+  return params;
+}
 
 class ProjectTasksScreen extends StatefulWidget {
   const ProjectTasksScreen({super.key, this.initialTopView = 0});
@@ -208,12 +244,12 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       final userId = session['userId'];
       final role = _currentUserRole.isNotEmpty ? _currentUserRole : (session['role'] as String? ?? 'Employee');
 
-      final queryParams = <String>[];
-      if (role != 'Super Admin') {
-        if (_currentEmployeeId != null) queryParams.add('employee_id=$_currentEmployeeId');
-        if (userId != null) queryParams.add('user_id=$userId');
-      }
-      queryParams.add('role=$role');
+      final queryParams = buildTaskQueryParams(
+        role: role,
+        permissions: await SessionManager.getPermissions(),
+        employeeId: _currentEmployeeId,
+        userId: userId,
+      );
       if (queryParams.isNotEmpty) {
         url += '?${queryParams.join('&')}';
       }
@@ -1519,21 +1555,30 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
               );
             }
 
-            // 💻 DESKTOP / WEB VIEW (100% UNTOUCHED)
-            final switcher = Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildViewTabButton(0, '📦 Projects', Icons.folder_copy_outlined, textTitle),
-                  _buildViewTabButton(1, '⚡ General Tasks', Icons.bolt_rounded, textTitle),
-                ],
-              ),
-            );
+            // 💻 DESKTOP / WEB VIEW
+            // Admin keeps the in-screen switcher. Managers and Employees use
+            // the sidebar entries instead, so their duplicate tabs stay hidden.
+            final showSwitcher = shouldShowDesktopViewSwitcher(_currentUserRole);
+            final showActionButton = (_activeTopView == 0 && _canCreateProject) ||
+                (_activeTopView == 1 && _canCreateTask);
+            if (!showSwitcher && !showActionButton) return const SizedBox.shrink();
+
+            final switcher = showSwitcher
+                ? Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildViewTabButton(0, '📦 Projects', Icons.folder_copy_outlined, textTitle),
+                        _buildViewTabButton(1, '⚡ General Tasks', Icons.bolt_rounded, textTitle),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink();
 
             final actionButton = ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
@@ -1569,11 +1614,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                     children: [
                       switcher,
                       const Spacer(),
-                      // 🟢 Agar permission hai toh actionButton dikhao, warna khali box
-                      if ((_activeTopView == 0 && _canCreateProject) || (_activeTopView == 1 && _canCreateTask))
-                        actionButton
-                      else
-                        const SizedBox.shrink(),
+                      if (showActionButton) actionButton,
                     ],
                   ),
                 ),
