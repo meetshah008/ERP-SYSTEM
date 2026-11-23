@@ -961,15 +961,29 @@ exports.applyLeave = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please fill all required leave details.' });
     }
 
-    // Ensure columns exist in tables
+    // Ensure columns exist in tables (handling both Linux base tables and Windows tables)
     try {
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN is_paid TINYINT(1) DEFAULT 1");
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN paid_days INT DEFAULT 1");
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN unpaid_days INT DEFAULT 0");
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN deduction_amount DECIMAL(12,2) DEFAULT 0.00");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leaves_taken INT DEFAULT 0");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN total_leave_deduction DECIMAL(12,2) DEFAULT 0.00");
-    } catch (_) {}
+      await db.query("ALTER TABLE leave_request ADD COLUMN is_paid TINYINT(1) DEFAULT 1");
+      await db.query("ALTER TABLE leave_request ADD COLUMN paid_days INT DEFAULT 1");
+      await db.query("ALTER TABLE leave_request ADD COLUMN unpaid_days INT DEFAULT 0");
+      await db.query("ALTER TABLE leave_request ADD COLUMN deduction_amount DECIMAL(12,2) DEFAULT 0.00");
+    } catch (_) {
+      try {
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN is_paid TINYINT(1) DEFAULT 1");
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN paid_days INT DEFAULT 1");
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN unpaid_days INT DEFAULT 0");
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN deduction_amount DECIMAL(12,2) DEFAULT 0.00");
+      } catch (_) {}
+    }
+    try {
+      await db.query("ALTER TABLE employee ADD COLUMN unpaid_leaves_taken INT DEFAULT 0");
+      await db.query("ALTER TABLE employee ADD COLUMN total_leave_deduction DECIMAL(12,2) DEFAULT 0.00");
+    } catch (_) {
+      try {
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leaves_taken INT DEFAULT 0");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN total_leave_deduction DECIMAL(12,2) DEFAULT 0.00");
+      } catch (_) {}
+    }
 
     // Fetch employee current leave balances & per-day deduction rate
     const [empRows] = await db.query(
@@ -1080,18 +1094,37 @@ exports.applyLeave = async (req, res) => {
 exports.getLeaves = async (req, res) => {
   try {
     try {
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN is_paid TINYINT(1) DEFAULT 1");
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN paid_days INT DEFAULT 1");
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN unpaid_days INT DEFAULT 0");
-      await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN deduction_amount DECIMAL(12,2) DEFAULT 0.00");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN leave_balance_casual INT DEFAULT 12");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN leave_balance_sick INT DEFAULT 8");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN leave_balance_paid INT DEFAULT 15");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leave_limit INT DEFAULT 10");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leave_per_day_deduction DECIMAL(12,2) DEFAULT 0.00");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leaves_taken INT DEFAULT 0");
-      await db.query("ALTER TABLE EMPLOYEE ADD COLUMN total_leave_deduction DECIMAL(12,2) DEFAULT 0.00");
-    } catch (_) {}
+      await db.query("ALTER TABLE leave_request ADD COLUMN is_paid TINYINT(1) DEFAULT 1");
+      await db.query("ALTER TABLE leave_request ADD COLUMN paid_days INT DEFAULT 1");
+      await db.query("ALTER TABLE leave_request ADD COLUMN unpaid_days INT DEFAULT 0");
+      await db.query("ALTER TABLE leave_request ADD COLUMN deduction_amount DECIMAL(12,2) DEFAULT 0.00");
+    } catch (_) {
+      try {
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN is_paid TINYINT(1) DEFAULT 1");
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN paid_days INT DEFAULT 1");
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN unpaid_days INT DEFAULT 0");
+        await db.query("ALTER TABLE LEAVE_REQUEST ADD COLUMN deduction_amount DECIMAL(12,2) DEFAULT 0.00");
+      } catch (_) {}
+    }
+    try {
+      await db.query("ALTER TABLE employee ADD COLUMN leave_balance_casual INT DEFAULT 12");
+      await db.query("ALTER TABLE employee ADD COLUMN leave_balance_sick INT DEFAULT 8");
+      await db.query("ALTER TABLE employee ADD COLUMN leave_balance_paid INT DEFAULT 15");
+      await db.query("ALTER TABLE employee ADD COLUMN unpaid_leave_limit INT DEFAULT 10");
+      await db.query("ALTER TABLE employee ADD COLUMN unpaid_leave_per_day_deduction DECIMAL(12,2) DEFAULT 0.00");
+      await db.query("ALTER TABLE employee ADD COLUMN unpaid_leaves_taken INT DEFAULT 0");
+      await db.query("ALTER TABLE employee ADD COLUMN total_leave_deduction DECIMAL(12,2) DEFAULT 0.00");
+    } catch (_) {
+      try {
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN leave_balance_casual INT DEFAULT 12");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN leave_balance_sick INT DEFAULT 8");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN leave_balance_paid INT DEFAULT 15");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leave_limit INT DEFAULT 10");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leave_per_day_deduction DECIMAL(12,2) DEFAULT 0.00");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN unpaid_leaves_taken INT DEFAULT 0");
+        await db.query("ALTER TABLE EMPLOYEE ADD COLUMN total_leave_deduction DECIMAL(12,2) DEFAULT 0.00");
+      } catch (_) {}
+    }
 
     const { employee_id, user_id } = req.query;
     const companyId = resolveCompanyId(req);
