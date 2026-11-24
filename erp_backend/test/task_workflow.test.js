@@ -6,6 +6,7 @@ const {
   hasReviewers,
   canAssigneeSetStatus,
   canApproveTask,
+  initialTaskStatus,
   nextAssigneeStatus,
 } = require('../src/utils/task_workflow');
 
@@ -32,6 +33,12 @@ test('only a chosen reviewer or admin can approve from REVIEW', () => {
   assert.equal(canApproveTask({ isSuperAdmin: true, reviewerIds: [7], currentStatus: 'REVIEW' }), true);
   assert.equal(canApproveTask({ employeeId: 7, reviewerIds: [7], currentStatus: 'IN_PROGRESS' }), false);
   assert.equal(canApproveTask({ employeeId: 7, reviewerIds: [], currentStatus: 'REVIEW' }), false);
+});
+
+test('new tasks with reviewers start in REVIEW', () => {
+  assert.equal(initialTaskStatus('TODO', [7]), 'REVIEW');
+  assert.equal(initialTaskStatus('DONE', [7]), 'REVIEW');
+  assert.equal(initialTaskStatus('IN_PROGRESS', []), 'IN_PROGRESS');
 });
 
 test('assignee next status stops at REVIEW when reviewers exist', () => {

@@ -1396,6 +1396,10 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                         } else {
                                           _selectedReviewerIds.add(empId);
                                         }
+                                        // Reviewer tasks are sent straight to review.
+                                        if (_selectedReviewerIds.isNotEmpty) {
+                                          _selectedStatus = 'REVIEW';
+                                        }
                                       });
                                     },
                                     itemBuilder: (context) {

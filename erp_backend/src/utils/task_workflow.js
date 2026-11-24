@@ -53,6 +53,12 @@ function canApproveTask({ isSuperAdmin = false, employeeId = null, reviewerIds =
   return !Number.isNaN(id) && ids.includes(id);
 }
 
+/** A newly created task with reviewers starts in REVIEW for immediate approval. */
+function initialTaskStatus(status, reviewerIds = []) {
+  const requested = normalizeStatus(status, 'TODO');
+  return hasReviewers(reviewerIds) ? 'REVIEW' : requested;
+}
+
 function nextAssigneeStatus(currentStatus, reviewerIds = []) {
   const status = normalizeStatus(currentStatus, 'TODO');
   if (status === 'TODO') return 'IN_PROGRESS';
@@ -68,5 +74,6 @@ module.exports = {
   hasReviewers,
   canAssigneeSetStatus,
   canApproveTask,
+  initialTaskStatus,
   nextAssigneeStatus,
 };

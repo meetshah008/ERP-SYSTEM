@@ -4,7 +4,7 @@ const { resolveCompanyId, resolveRequesterInfo } = require('../../utils/tenant')
 const {
   normalizeEmployeeIds,
   normalizeStatus,
-  hasReviewers,
+  initialTaskStatus,
   canAssigneeSetStatus,
   canApproveTask,
 } = require('../../utils/task_workflow');
@@ -121,9 +121,8 @@ exports.createTask = async (req, res) => {
     }
 
     const reviewerList = normalizeEmployeeIds(reviewers);
-    // With reviewers configured, DONE is only reachable through an approval.
-    const requestedStatus = normalizeStatus(status, 'TODO');
-    const initialStatus = canAssigneeSetStatus(requestedStatus, reviewerList) ? requestedStatus : 'TODO';
+    // Reviewer tasks go straight to REVIEW; without reviewers the form's choice is kept.
+    const initialStatus = initialTaskStatus(status, reviewerList);
 
     const requester = await resolveRequesterInfo(req);
     const assignedBy = requester.employeeId || null;
