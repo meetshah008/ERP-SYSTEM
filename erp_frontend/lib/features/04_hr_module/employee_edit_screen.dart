@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../../core/network/api_client.dart';
@@ -30,6 +29,36 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
 
   // Active Tab Index: 0 = Employee Details, 1 = Company Details, 2 = Leaves & Deductions, 3 = Salary Preview
   int _activeTabIndex = 0;
+
+  // Canonical options used by the Company Details dropdowns. Stored values are
+  // normalised against these before use because DropdownButton asserts if its
+  // value is not present in its items (e.g. a legacy `Admin` role).
+  static const List<String> _roleOptions = [
+    'Employee',
+    'Module Manager',
+    'Super Admin',
+  ];
+  static const List<String> _employmentTypeOptions = [
+    'Permanent',
+    'Contract',
+    'Probation',
+    'Internship',
+  ];
+  static const List<String> _weeklyOffOptions = [
+    'Sunday',
+    'Monday',
+    'Saturday',
+  ];
+  static const List<String> _statusOptions = [
+    'active',
+    'suspended',
+    'terminated',
+  ];
+  static const List<String> _salaryGradeOptions = [
+    'Grade A',
+    'Grade B',
+    'Grade C',
+  ];
 
   // ================= 1. EMPLOYEE DETAILS (PERSONAL & KYC) =================
   String _selectedGender = 'Male';
@@ -83,6 +112,68 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     }
   }
 
+  /// Returns the canonical option for a stored value, ignoring case/spacing.
+  /// Falls back to [fallback] when the stored data uses an unknown value.
+  static String _oneOf(List<String> options, Object? raw, String fallback) {
+    final value = raw?.toString().trim().toLowerCase() ?? '';
+    for (final option in options) {
+      if (value == option.toLowerCase()) return option;
+    }
+    return fallback;
+  }
+
+  /// Older databases contain roles such as `Admin` or `Manager` which are not
+  /// part of the current 3-tier role dropdown. Map them to a valid option so
+  /// opening the Company tab never crashes, while keeping their meaning.
+  static String _normaliseRole(Object? raw) {
+    final exact = _oneOf(_roleOptions, raw, '');
+    if (exact.isNotEmpty) return exact;
+
+    switch (raw?.toString().trim().toLowerCase() ?? '') {
+      case 'admin':
+      case 'administrator':
+      case 'superadmin':
+        return 'Super Admin';
+      case 'manager':
+      case 'supervisor':
+        return 'Module Manager';
+      default:
+        return 'Employee';
+    }
+  }
+
+  static int? _departmentIdOf(dynamic department) {
+    if (department is! Map) return null;
+    final raw = department['department_id'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  /// Deduplicated department items: duplicate/null ids would also trip the
+  /// DropdownButton assertion when the Company tab is opened.
+  List<DropdownMenuItem<int?>> _departmentMenuItems() {
+    final seen = <int>{};
+    final items = <DropdownMenuItem<int?>>[];
+    for (final department in _departments) {
+      final id = _departmentIdOf(department);
+      if (id == null || !seen.add(id)) continue;
+      final name = department is Map ? department['name'] : null;
+      items.add(DropdownMenuItem<int?>(
+        value: id,
+        child: Text(name?.toString() ?? 'Department'),
+      ));
+    }
+    return items;
+  }
+
+  int? _departmentValue(List<DropdownMenuItem<int?>> items) {
+    if (_selectedDepartmentId == null) return null;
+    for (final item in items) {
+      if (item.value == _selectedDepartmentId) return _selectedDepartmentId;
+    }
+    return null;
+  }
+
   void _populateFromMap(Map<String, dynamic> emp) {
     _fullNameController.text = emp['full_name']?.toString() ?? '';
     _ageController.text = emp['age']?.toString() ?? '';
@@ -112,17 +203,24 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     _officialEmailController.text =
         emp['email']?.toString() ?? emp['user_email']?.toString() ?? '';
     _designationController.text = emp['designation']?.toString() ?? 'Staff';
-    _selectedRole = emp['role_name']?.toString() ??
-        emp['role']?.toString() ??
-        'Employee';
-    _selectedEmploymentType =
-        emp['employment_type']?.toString() ?? 'Permanent';
-    _selectedWeeklyOff = emp['weekly_off']?.toString() ?? 'Sunday';
-    _selectedStatus = (emp['status'] ?? 'active').toString().toLowerCase();
-    _selectedSalaryGrade = emp['salary_grade']?.toString() ?? 'Grade B';
-    _selectedDepartmentId = emp['department_id'] != null
-        ? int.tryParse(emp['department_id'].toString())
-        : null;
+    _selectedRole = _normaliseRole(emp['role_name'] ?? emp['role']);
+    _selectedEmploymentType = _oneOf(
+      _employmentTypeOptions,
+      emp['employment_type'],
+      'Permanent',
+    );
+    _selectedWeeklyOff = _oneOf(
+      _weeklyOffOptions,
+      emp['weekly_off'],
+      'Sunday',
+    );
+    _selectedStatus = _oneOf(_statusOptions, emp['status'], 'active');
+    _selectedSalaryGrade = _oneOf(
+      _salaryGradeOptions,
+      emp['salary_grade'],
+      'Grade B',
+    );
+    _selectedDepartmentId = _departmentIdOf(emp);
 
     if (emp['join_date'] != null) {
       _joinDate = DateTime.tryParse(emp['join_date'].toString());
@@ -158,8 +256,11 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
 
   Future<void> _fetchDepartments() async {
     try {
-      final res = await http
-          .get(Uri.parse('${ApiClient.apiHost}/api/hr/departments'));
+      // Departments are company-scoped: ApiClient attaches the JWT and
+      // x-company-id headers the backend needs to resolve the tenant.
+      final res = await ApiClient.get(
+        Uri.parse('${ApiClient.apiHost}/api/hr/departments'),
+      );
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
         _departments = json['data'] ?? [];
@@ -1279,6 +1380,8 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     Color textSub,
     bool isMobile,
   ) {
+    final departmentItems = _departmentMenuItems();
+    final departmentValue = _departmentValue(departmentItems);
     return Column(
       children: [
         _buildSectionCard(
@@ -1292,17 +1395,8 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
             if (isMobile) ...[
               _buildDropdown<int?>(
                 label: 'Assigned Department',
-                value: _departments.any(
-                  (d) => d['department_id'] == _selectedDepartmentId,
-                )
-                    ? _selectedDepartmentId
-                    : null,
-                items: _departments.map<DropdownMenuItem<int?>>((d) {
-                  return DropdownMenuItem<int?>(
-                    value: d['department_id'],
-                    child: Text(d['name'] ?? 'Department'),
-                  );
-                }).toList(),
+                value: departmentValue,
+                items: departmentItems,
                 onChanged: (val) =>
                     setState(() => _selectedDepartmentId = val),
                 icon: Icons.business_outlined,
@@ -1360,17 +1454,8 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
                     flex: 2,
                     child: _buildDropdown<int?>(
                       label: 'Assigned Department',
-                      value: _departments.any(
-                        (d) => d['department_id'] == _selectedDepartmentId,
-                      )
-                          ? _selectedDepartmentId
-                          : null,
-                      items: _departments.map<DropdownMenuItem<int?>>((d) {
-                        return DropdownMenuItem<int?>(
-                          value: d['department_id'],
-                          child: Text(d['name'] ?? 'Department'),
-                        );
-                      }).toList(),
+                      value: departmentValue,
+                      items: departmentItems,
                       onChanged: (val) =>
                           setState(() => _selectedDepartmentId = val),
                       icon: Icons.business_outlined,

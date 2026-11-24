@@ -19,11 +19,94 @@ import '../05_tasks/project_tasks_screen.dart';
 import '../04_hr_module/employee_details_screen.dart';
 import '../04_hr_module/salary_increment_screen.dart';
 import '../04_hr_module/departments_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform; // <-- Add this
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint; // <-- Add this
 import '../../core/widgets/expandable_nav_bar.dart';  // <-- Add this
 import '../../core/navigation/app_navigation.dart';
 import '../../core/widgets/permission_sidebar.dart';
 import '../../core/theme/enterprise_theme.dart';
+
+/// Dashboard cards are a company-wide overview, so they never send
+/// role/employee narrowing filters. Those filters belong to the detailed
+/// Projects/Tasks screens; sending them here made every non-admin role's
+/// counters 0 / 0 whenever the employee id was missing or not assigned.
+///
+/// The backend still scopes the request to the logged-in company via
+/// `x-company-id` / JWT headers.
+List<String> buildDashboardScopeQueryParams({
+  required String role,
+  required Map<String, bool> permissions,
+  Object? employeeId,
+  Object? userId,
+}) {
+  return const <String>[];
+}
+
+String _statusOf(dynamic item) {
+  if (item is! Map) return '';
+  return (item['status'] ?? '').toString().trim().toLowerCase();
+}
+
+bool isDoneTaskStatus(dynamic item) {
+  final status = _statusOf(item);
+  return status == 'done' || status == 'completed' || status == 'complete';
+}
+
+bool isCompletedProjectStatus(dynamic item) {
+  final status = _statusOf(item);
+  return status == 'completed' || status == 'complete' || status == 'done';
+}
+
+int countPendingTasks(List<dynamic> tasks) =>
+    tasks.where((task) => !isDoneTaskStatus(task)).length;
+
+int countPendingProjects(List<dynamic> projects) =>
+    projects.where((project) => !isCompletedProjectStatus(project)).length;
+
+int countCompletedProjects(List<dynamic> projects) =>
+    projects.where(isCompletedProjectStatus).length;
+
+/// Settings & Logs identity labels.
+///
+/// The employee API already returns a human `designation` and a joined
+/// `role_name`. These helpers keep null/blank/raw-id values out of the UI and
+/// prefer the job title over the generic access role.
+String niceNameLabel(dynamic value, [String fallback = 'Employee']) {
+  final raw = (value ?? '').toString().trim();
+  if (raw.isEmpty || raw.toLowerCase() == 'null') return fallback;
+  if (double.tryParse(raw) != null) return fallback;
+  return raw;
+}
+
+String designationLabel(Map<String, dynamic>? employee, [String? roleFallback]) {
+  final designation = niceNameLabel(employee?['designation'], '');
+  if (designation.isNotEmpty) return designation;
+  return niceNameLabel(employee?['role_name'], roleFallback ?? 'Employee');
+}
+
+Map<String, dynamic>? currentEmployeeFrom(
+  List<dynamic> employees, {
+  int? employeeId,
+  int? userId,
+  String? email,
+}) {
+  for (final row in employees) {
+    if (row is! Map) continue;
+    final emp = Map<String, dynamic>.from(row);
+    if (employeeId != null &&
+        int.tryParse(emp['employee_id']?.toString() ?? '') == employeeId) {
+      return emp;
+    }
+    if (userId != null &&
+        int.tryParse(emp['user_id']?.toString() ?? '') == userId) {
+      return emp;
+    }
+    final rowEmail = (emp['email'] ?? '').toString().trim().toLowerCase();
+    if (email != null && rowEmail.isNotEmpty && rowEmail == email.trim().toLowerCase()) {
+      return emp;
+    }
+  }
+  return null;
+}
 
 class AdminDashboardScreen extends StatefulWidget {
   final String companyName;
@@ -77,6 +160,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // 🔐 Permissions Map (Logged-in user ke allowed/denied features)
   Map<String, bool> _permissions = {};
   String _displayName = '';
+  int? _sessionEmployeeId;
+  int? _sessionUserId;
 
   // Permission-driven navigation. Super Admin keeps the original sidebar.
   List<AppNavGroup> _navGroups = const [];
@@ -111,11 +196,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _loadSessionInfo() async {
     final session = await SessionManager.getUserSession();
     final storedName = (session['fullName'] as String?)?.trim();
-    if (mounted && storedName != null && storedName.isNotEmpty) {
-      setState(() {
+    if (!mounted) return;
+    setState(() {
+      if (storedName != null && storedName.isNotEmpty) {
         _displayName = storedName;
-      });
-    }
+      }
+      _sessionEmployeeId = int.tryParse(session['employeeId']?.toString() ?? '');
+      _sessionUserId = int.tryParse(session['userId']?.toString() ?? '');
+    });
   }
 
   String get _effectiveUserName {
@@ -307,37 +395,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
       // Resolve session context for role-based dashboard metrics
       final role = widget.role.isNotEmpty ? widget.role : (session['role'] as String? ?? 'Super Admin');
-      final empId = session['employeeId'];
-      final userId = session['userId'];
+      final queryParts = buildDashboardScopeQueryParams(
+        role: role,
+        permissions: const {},
+        employeeId: session['employeeId'],
+        userId: session['userId'],
+      );
+      final queryString = queryParts.isEmpty ? '' : '?${queryParts.join('&')}';
 
-      final queryParts = <String>[];
-      if (role != 'Super Admin') {
-        if (empId != null) queryParts.add('employee_id=$empId');
-        if (userId != null) queryParts.add('user_id=$userId');
-      }
-      queryParts.add('role=${Uri.encodeComponent(role)}');
-      final queryString = queryParts.isNotEmpty ? '?${queryParts.join('&')}' : '';
-
-      // 2. Tasks count (TODO ya IN_PROGRESS)
-      final taskRes = await ApiClient.get(Uri.parse('$_apiHost/api/tasks$queryString'), headers: headers);
-      if (taskRes.statusCode == 200) {
-        final taskData = jsonDecode(taskRes.body);
-        if (taskData['success'] == true && taskData['data'] is List) {
-          final list = taskData['data'] as List;
-          _totalTasksCount = list.length; // 👈 Yeh line add karein
-          _pendingTasksCount = list.where((t) => t['status'] != 'DONE').length;
+      // 2. Tasks count. Keep each fetch isolated: an error here must not skip
+      // the projects request below and silently leave both cards at 0.
+      try {
+        final taskRes = await ApiClient.get(Uri.parse('$_apiHost/api/tasks$queryString'), headers: headers);
+        if (taskRes.statusCode == 200) {
+          final taskData = jsonDecode(taskRes.body);
+          if (taskData['success'] == true && taskData['data'] is List) {
+            final list = List<dynamic>.from(taskData['data'] as List);
+            _totalTasksCount = list.length;
+            _pendingTasksCount = countPendingTasks(list);
+          }
         }
+      } catch (e) {
+        debugPrint('Dashboard tasks fetch failed: $e');
       }
 
-      // 3. 👈 YEH MISSING THA: Real Employees List Fetch Karna!
-      final empRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'), headers: headers);
-      if (empRes.statusCode == 200) {
-        final empData = jsonDecode(empRes.body);
-        if (empData['success'] == true && empData['data'] is List) {
-          _employees = empData['data'];
+      // 3. Real Employees List
+      try {
+        final empRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/employees'), headers: headers);
+        if (empRes.statusCode == 200) {
+          final empData = jsonDecode(empRes.body);
+          if (empData['success'] == true && empData['data'] is List) {
+            _employees = empData['data'];
+          }
         }
+      } catch (e) {
+        debugPrint('Dashboard employees fetch failed: $e');
       }
-      // 4. Departments List Fetch Karna
+
+      // 4. Departments List
       try {
         final deptRes = await ApiClient.get(Uri.parse('$_apiHost/api/hr/departments'), headers: headers);
         if (deptRes.statusCode == 200) {
@@ -346,22 +441,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             _departments = deptData['data'];
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Dashboard departments fetch failed: $e');
+      }
+
       // 5. Projects Fetch Karna & Stats Calculate Karna
       try {
         final prjRes = await ApiClient.get(Uri.parse('$_apiHost/api/projects$queryString'), headers: headers);
         if (prjRes.statusCode == 200) {
           final prjData = jsonDecode(prjRes.body);
           if (prjData['success'] == true && prjData['data'] is List) {
-            final List list = prjData['data'];
+            final list = List<dynamic>.from(prjData['data'] as List);
             _totalProjects = list.length;
-            // Jo project 'Completed' nahi hain wo Pending / In-Progress hain
-            _pendingProjects = list.where((p) => p['status'] != 'Completed').length;
-            // Jo project 'Completed' hain
-            _completedProjects = list.where((p) => p['status'] == 'Completed').length;
+            _pendingProjects = countPendingProjects(list);
+            _completedProjects = countCompletedProjects(list);
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Dashboard projects fetch failed: $e');
+      }
 
       // 6. Real-time Team Performance Summary
       try {
@@ -5575,12 +5673,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             : EnterpriseColors.textSecondary)
         : MobilePalette.body(isDark);
 
-    final rawName = widget.adminEmail.isNotEmpty
-        ? widget.adminEmail.split('@')[0]
-        : 'Admin';
-    final displayName = rawName.isNotEmpty
-        ? (rawName[0].toUpperCase() + rawName.substring(1))
-        : 'Admin';
+    final profile = currentEmployeeFrom(
+      _employees,
+      employeeId: _sessionEmployeeId,
+      userId: _sessionUserId,
+      email: widget.adminEmail,
+    );
+    final roleFallback = widget.role.trim().isNotEmpty ? widget.role : 'Employee';
+    final roleLabel = niceNameLabel(profile?['role_name'], roleFallback);
+    final designation = designationLabel(profile, roleLabel);
+    final displayName = _effectiveUserName;
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'A';
 
     return Align(
@@ -5672,7 +5774,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         ),
                         const SizedBox(height: 7),
                         MobileLivePill(
-                          label: widget.role.toUpperCase(),
+                          label: designation,
                           isDark: isDark,
                           color: MobilePalette.violet,
                         ),
@@ -5768,9 +5870,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   ),
                   Divider(color: MobilePalette.hairline(isDark), height: 1),
                   _buildMobileInfoRow(
+                    icon: Icons.badge_outlined,
+                    label: 'DESIGNATION',
+                    value: designation,
+                    isDark: isDark,
+                  ),
+                  Divider(color: MobilePalette.hairline(isDark), height: 1),
+                  _buildMobileInfoRow(
                     icon: Icons.shield_rounded,
                     label: 'ACCESS ROLE',
-                    value: widget.role,
+                    value: roleLabel,
                     isDark: isDark,
                   ),
                 ],

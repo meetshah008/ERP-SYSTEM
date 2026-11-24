@@ -62,5 +62,29 @@ void main() {
         isFalse,
       );
     });
+
+    test('Sunday rows are never reported as missing data', () {
+      // 22 Nov 2026 is a Sunday, 21 Nov is a Saturday.
+      final sunday = {
+        'work_date': '2026-11-22',
+        'check_in_time': null,
+        'check_out_time': '--:--',
+      };
+      final saturday = {
+        'work_date': '2026-11-21',
+        'check_in_time': null,
+        'check_out_time': '18:30:00',
+      };
+      final monday = {
+        'work_date': '2026-11-23',
+        'check_in_time': '09:00:00',
+        'check_out_time': null,
+      };
+
+      expect(isSundayAttendanceRecord(sunday), isTrue);
+      expect(isSundayAttendanceRecord(saturday), isFalse);
+      expect(hasMissingPunchTimes(sunday), isFalse);
+      expect(countRecordsWithMissingPunchTimes([sunday, saturday, monday]), 2);
+    });
   });
 }

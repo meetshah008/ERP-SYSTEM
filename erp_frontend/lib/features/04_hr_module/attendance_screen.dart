@@ -18,17 +18,23 @@ bool isMissingAttendanceTime(dynamic value) {
   return text.toLowerCase() == 'null';
 }
 
-bool hasMissingPunchTimes(Map<String, dynamic> record) {
+/// Sundays are non-working days in the biometric dump. Those rows often carry
+/// empty punch values, but they must not be reported as "Missing Data".
+bool isSundayAttendanceRecord(dynamic record) {
+  if (record is! Map) return false;
+  final date = DateTime.tryParse(record['work_date']?.toString() ?? '');
+  return date != null && date.weekday == DateTime.sunday;
+}
+
+bool hasMissingPunchTimes(dynamic record) {
+  if (record is! Map) return false;
+  if (isSundayAttendanceRecord(record)) return false;
   return isMissingAttendanceTime(record['check_in_time']) ||
       isMissingAttendanceTime(record['check_out_time']);
 }
 
 int countRecordsWithMissingPunchTimes(Iterable<dynamic> records) {
-  return records.where((record) {
-    if (record is! Map) return false;
-    return isMissingAttendanceTime(record['check_in_time']) ||
-        isMissingAttendanceTime(record['check_out_time']);
-  }).length;
+  return records.where(hasMissingPunchTimes).length;
 }
 
 class AttendanceScreen extends StatefulWidget {
@@ -77,6 +83,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   // 1. Backend se Attendance fetch karna (With Filters)
   Future<void> _fetchAttendance() async {
     setState(() => _isLoading = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       String url = '${ApiClient.apiHost}/api/hr/attendance?';
       if (_customDateRange != null) {
@@ -93,12 +100,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         if (json['success'] == true) {
           _attendanceRecords = json['data'] ?? [];
           _applySearchFilter();
+          return;
         }
+        if (mounted) {
+          messenger?.showSnackBar(
+            SnackBar(content: Text('Attendance load failed: ${json['message'] ?? 'Unknown error'}')),
+          );
+        }
+      } else if (mounted) {
+        messenger?.showSnackBar(
+          SnackBar(content: Text('Attendance load failed (HTTP ${res.statusCode}).')),
+        );
       }
     } catch (e) {
       debugPrint('Error fetching attendance: $e');
+      if (mounted) messenger?.showSnackBar(SnackBar(content: Text('Attendance load error: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-    if (mounted) setState(() => _isLoading = false);
   }
 
   void _applySearchFilter() {
@@ -223,8 +242,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
       emp['total_minutes'] = (emp['total_minutes'] as int) + _getRecordWorkMinutes(r);
 
-      if (isMissingAttendanceTime(r['check_in_time']) ||
-          isMissingAttendanceTime(r['check_out_time'])) {
+      if (hasMissingPunchTimes(r)) {
         emp['missing_data_count'] = (emp['missing_data_count'] as int) + 1;
       }
     }
@@ -859,11 +877,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                             ),
                       onPressed: () async {
-                        await Navigator.push(
+                        final imported = await Navigator.push<Map<String, dynamic>>(
                           context,
-                          MaterialPageRoute(builder: (_) => const BiometricImportScreen()),
+                          MaterialPageRoute<Map<String, dynamic>>(
+                            builder: (_) => const BiometricImportScreen(),
+                          ),
                         );
-                        _fetchAttendance();
+                        if (imported != null && mounted) {
+                          final month = int.tryParse('${imported['importedMonth'] ?? ''}');
+                          final year = int.tryParse('${imported['importedYear'] ?? ''}');
+                          if (month != null || year != null) {
+                            setState(() {
+                              if (month != null) _selectedMonth = month;
+                              if (year != null) _selectedYear = year;
+                              _customDateRange = null;
+                            });
+                          }
+                        }
+                        await _fetchAttendance();
                       },
                           )
                         : null;

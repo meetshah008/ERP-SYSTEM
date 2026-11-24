@@ -169,8 +169,11 @@ exports.createTask = async (req, res) => {
 exports.getTasks = async (req, res) => {
   try {
     const { employee_id, user_id, role, project_id } = req.query;
-    const userRole = role || req.user?.role || req.user?.role_name;
-    const isSuperAdmin = userRole === 'Super Admin' || userRole === 'admin';
+    const normalizedRole = String(role || req.user?.role || req.user?.role_name || '')
+      .trim()
+      .toLowerCase();
+    // Accept Admin / ADMIN / Super Admin consistently with permissions.js.
+    const isSuperAdmin = normalizedRole.includes('admin');
 
     // Agar role ya employee_id ya user_id explicitly bheja hai tabhi filtering karenge
     const isFilteringRequested = Boolean(role || employee_id || user_id);

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:ui';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_controller.dart';
@@ -8,6 +7,102 @@ import '../../core/widgets/botanical_background.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/widgets/searchable_employee_dropdown.dart';
 import '../../core/network/api_client.dart';
+
+String _dateOnly(DateTime date) =>
+    "${date.year.toString().padLeft(4, '0')}-"
+    "${date.month.toString().padLeft(2, '0')}-"
+    "${date.day.toString().padLeft(2, '0')}";
+
+/// Query params for the Leave Management list.
+///
+/// `all` (default) keeps the old behaviour. Period filters are sent to the
+/// backend so large leave lists do not have to be downloaded in full.
+List<String> buildLeaveQueryParams({
+  Object? userId,
+  String period = 'all',
+  DateTimeRange? customRange,
+  DateTime? now,
+}) {
+  final params = <String>[];
+  if (userId != null) params.add('user_id=$userId');
+
+  final today = now ?? DateTime.now();
+  switch (period) {
+    case 'current_month':
+      params.add('month=${today.month}');
+      params.add('year=${today.year}');
+      break;
+    case 'last_30_days':
+      params.add('start_date=${_dateOnly(today.subtract(const Duration(days: 29)))}');
+      params.add('end_date=${_dateOnly(today)}');
+      break;
+    case 'custom':
+      if (customRange != null) {
+        params.add('start_date=${_dateOnly(customRange.start)}');
+        params.add('end_date=${_dateOnly(customRange.end)}');
+      }
+      break;
+  }
+  return params;
+}
+
+DateTime? _parseLeaveDate(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  final text = value.toString().trim();
+  if (text.isEmpty) return null;
+  return DateTime.tryParse(text) ??
+      DateTime.tryParse(text.replaceFirst(' ', 'T'));
+}
+
+/// Local mirror of the backend filter. The screen stays correct even before
+/// the backend is restarted, and double-filtering is harmless.
+List<dynamic> filterLeavesByPeriod(
+  List<dynamic> leaves,
+  String period, {
+  DateTimeRange? customRange,
+  DateTime? now,
+}) {
+  if (period == 'all') return leaves;
+
+  final today = now ?? DateTime.now();
+  int? month;
+  int? year;
+  DateTime? start;
+  DateTime? end;
+
+  switch (period) {
+    case 'current_month':
+      month = today.month;
+      year = today.year;
+      break;
+    case 'last_30_days':
+      start = today.subtract(const Duration(days: 29));
+      end = today;
+      break;
+    case 'custom':
+      start = customRange?.start;
+      end = customRange?.end;
+      break;
+  }
+
+  if (month == null && start == null) return leaves;
+
+  return leaves.where((leave) {
+    final raw = leave is Map
+        ? (leave['start_date'] ?? leave['created_at'])
+        : null;
+    final parsed = _parseLeaveDate(raw);
+    if (parsed == null) return false;
+    if (month != null && year != null) {
+      return parsed.year == year && parsed.month == month;
+    }
+    final date = DateTime(parsed.year, parsed.month, parsed.day);
+    final from = DateTime(start!.year, start.month, start.day);
+    final to = DateTime(end!.year, end.month, end.day);
+    return !date.isBefore(from) && !date.isAfter(to);
+  }).toList();
+}
 
 class LeaveManagementScreen extends StatefulWidget {
   const LeaveManagementScreen({super.key});
@@ -24,6 +119,10 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
   bool _canApproveLeave = false;
   int? _currentUserId;
   String _currentUserRole = '';
+
+  // List time filter. Default is unchanged "all time" behaviour.
+  String _leavePeriod = 'all'; // all | current_month | last_30_days | custom
+  DateTimeRange? _leaveCustomRange;
 
   @override
   void initState() {
@@ -56,11 +155,14 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
       final canApprove = await SessionManager.hasPermission('leaves_approve');
       final isApproverOrAdmin = role == 'Super Admin' || canApprove;
 
-      String url = '${ApiClient.apiHost}/api/hr/leaves';
-      // Regular employee ko sirf apni leaves aayengi:
-      if (!isApproverOrAdmin && currentUserId != null) {
-        url += '?user_id=$currentUserId';
-      }
+      final queryParams = buildLeaveQueryParams(
+        userId: (!isApproverOrAdmin && currentUserId != null) ? currentUserId : null,
+        period: _leavePeriod,
+        customRange: _leaveCustomRange,
+      );
+      final url = queryParams.isEmpty
+          ? '${ApiClient.apiHost}/api/hr/leaves'
+          : '${ApiClient.apiHost}/api/hr/leaves?${queryParams.join('&')}';
 
       final res = await ApiClient.get(Uri.parse(url));
       if (res.statusCode == 200) {
@@ -87,13 +189,17 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
   // Helper: Display leaves list (Approver gets all, Employee gets only own leaves)
   List<dynamic> get _displayLeaves {
     final isApproverOrAdmin = _currentUserRole == 'Super Admin' || _canApproveLeave;
-    if (isApproverOrAdmin) {
-      return _leaves;
-    }
-    return _leaves.where((l) {
-      if (_currentUserId == null) return true;
-      return l['user_id'] == _currentUserId;
-    }).toList();
+    final visible = isApproverOrAdmin
+        ? _leaves
+        : _leaves.where((l) {
+            if (_currentUserId == null) return true;
+            return l['user_id'] == _currentUserId;
+          }).toList();
+    return filterLeavesByPeriod(
+      visible,
+      _leavePeriod,
+      customRange: _leaveCustomRange,
+    );
   }
 
   // 2. Employees mangwana (Apply leave ke dropdown ke liye)
@@ -753,6 +859,8 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
                 ),
               ),
 
+              _buildLeaveFilterBar(isDark, textTitle, textSub, cardBg, cardBorder),
+
               // 2. CONTENT BODY
               Expanded(
                 child: _isLoading
@@ -764,9 +872,27 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
                               children: [
                                 Icon(Icons.event_available_outlined, size: 64, color: textSub.withValues(alpha: 0.3)),
                                 const SizedBox(height: 14),
-                                Text('No leave applications found', style: TextStyle(color: textTitle, fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text(
+                                  _leavePeriod == 'all'
+                                      ? 'No leave applications found'
+                                      : 'No leave applications in this period',
+                                  style: TextStyle(color: textTitle, fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
                                 const SizedBox(height: 6),
-                                Text('Click "+ Apply Leave" to create a new leave request.', style: TextStyle(color: textSub, fontSize: 12)),
+                                Text(
+                                  _leavePeriod == 'all'
+                                      ? 'Click "+ Apply Leave" to create a new leave request.'
+                                      : 'Showing: $_activePeriodLabel',
+                                  style: TextStyle(color: textSub, fontSize: 12),
+                                ),
+                                if (_leavePeriod != 'all') ...[
+                                  const SizedBox(height: 12),
+                                  TextButton.icon(
+                                    onPressed: _resetLeavePeriod,
+                                    icon: const Icon(Icons.restore_rounded, size: 16),
+                                    label: const Text('Show all leaves'),
+                                  ),
+                                ],
                               ],
                             ),
                           )
@@ -781,6 +907,129 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  String get _activePeriodLabel {
+    switch (_leavePeriod) {
+      case 'current_month':
+        return 'This month';
+      case 'last_30_days':
+        return 'Last 30 days';
+      case 'custom':
+        return _leaveCustomRange == null
+            ? 'Custom range'
+            : '${_dateOnly(_leaveCustomRange!.start)} → ${_dateOnly(_leaveCustomRange!.end)}';
+      default:
+        return 'All time';
+    }
+  }
+
+  Future<void> _pickCustomRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: _leaveCustomRange,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _leaveCustomRange = picked;
+      _leavePeriod = 'custom';
+    });
+    _fetchLeaves();
+  }
+
+  void _resetLeavePeriod() {
+    setState(() {
+      _leavePeriod = 'all';
+      _leaveCustomRange = null;
+    });
+    _fetchLeaves();
+  }
+
+  Widget _buildLeaveFilterBar(
+    bool isDark,
+    Color textTitle,
+    Color textSub,
+    Color cardBg,
+    Color cardBorder,
+  ) {
+    final isFiltered = _leavePeriod != 'all';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cardBorder, width: 1),
+        ),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.filter_list_rounded, size: 16, color: textSub),
+                const SizedBox(width: 6),
+                Text(
+                  'Period:',
+                  style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            DropdownButton<String>(
+              value: _leavePeriod,
+              dropdownColor: isDark ? const Color(0xFF0B1712) : Colors.white,
+              style: TextStyle(color: textTitle, fontSize: 12),
+              underline: const SizedBox(),
+              items: const [
+                DropdownMenuItem(value: 'all', child: Text('All time')),
+                DropdownMenuItem(value: 'current_month', child: Text('This month')),
+                DropdownMenuItem(value: 'last_30_days', child: Text('Last 30 days')),
+                DropdownMenuItem(value: 'custom', child: Text('Custom range...')),
+              ],
+              onChanged: (value) async {
+                if (value == null) return;
+                if (value == 'custom') {
+                  await _pickCustomRange();
+                  return;
+                }
+                setState(() {
+                  _leavePeriod = value;
+                  _leaveCustomRange = null;
+                });
+                _fetchLeaves();
+              },
+            ),
+            if (_leavePeriod == 'custom' && _leaveCustomRange != null)
+              TextButton.icon(
+                onPressed: _pickCustomRange,
+                icon: const Icon(Icons.date_range_rounded, size: 15),
+                label: Text(
+                  '${_dateOnly(_leaveCustomRange!.start)} → ${_dateOnly(_leaveCustomRange!.end)}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ),
+            if (isFiltered)
+              IconButton(
+                tooltip: 'Show all leaves',
+                onPressed: _resetLeavePeriod,
+                icon: Icon(Icons.close_rounded, size: 16, color: textSub),
+              ),
+            if (isFiltered)
+              Text(
+                _activePeriodLabel,
+                style: TextStyle(color: textSub, fontSize: 11),
+              ),
+          ],
         ),
       ),
     );

@@ -1,8 +1,17 @@
 const db = require('../../config/db');
 const xlsx = require('xlsx');
 const jwt = require('jsonwebtoken');
-const { resolveCompanyId } = require('../../utils/tenant');
+const { resolveCompanyId, resolveRequesterInfo } = require('../../utils/tenant');
 const { getDefaultPermissions } = require('../../utils/permissions');
+const { buildLeaveDateFilter } = require('../../utils/leave_filter');
+const {
+  findHeaderIndex,
+  unpackRows,
+  formatPreviewValue,
+  parseDate,
+  parseTime,
+  getNormalizedValue,
+} = require('../../utils/attendance_parser');
 
 // Ensure error_logs column exists in ATTENDANCE_IMPORT
 (async () => {
@@ -596,66 +605,26 @@ exports.previewBiometricSheet = async (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const aoa = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const headerIdx = findHeaderIndex(aoa);
+    const { headers, rows } = unpackRows(aoa, headerIdx);
 
-    // Empty rows filter out karna
-    const validRows = aoa.filter(r => Array.isArray(r) && r.some(c => c !== null && c !== undefined && String(c).trim() !== ''));
-
-    if (validRows.length === 0) {
-      return res.status(400).json({ success: false, message: 'The uploaded file is empty.' });
-    }
-
-    // Auto detect Header row
-    let headerIdx = 0;
-    for (let i = 0; i < Math.min(validRows.length, 10); i++) {
-      const rowText = validRows[i].join(',').toLowerCase();
-      if (rowText.includes('emp') || rowText.includes('user') || rowText.includes('date') || rowText.includes('punch') || rowText.includes('time') || rowText.includes('status')) {
-        headerIdx = i;
-        break;
-      }
-    }
-
-    const rawHeaders = validRows[headerIdx];
-    let isSingleCol = false;
-    let delim = ',';
-    let headers = [];
-
-    if (rawHeaders.length === 1 && (String(rawHeaders[0]).includes(',') || String(rawHeaders[0]).includes(';'))) {
-      isSingleCol = true;
-      delim = String(rawHeaders[0]).includes(',') ? ',' : ';';
-      headers = String(rawHeaders[0]).split(delim).map(h => h.replace(/^\uFEFF/, '').trim());
-    } else {
-      headers = rawHeaders.map((h, i) => {
-        const val = String(h ?? '').replace(/^\uFEFF/, '').trim();
-        return val.length > 0 ? val : `Col ${i + 1}`;
+    if (headerIdx < 0 || rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not find attendance headers (Emp Code / UserID / Date / Punch1) in this file.',
       });
     }
 
-    // Pehle 100 rows preview ke liye
-    const previewRows = [];
-    const maxPreview = Math.min(validRows.length, headerIdx + 1 + 100);
-
-    for (let i = headerIdx + 1; i < maxPreview; i++) {
-      const row = validRows[i];
-      let cells = [];
-      if (isSingleCol && row.length === 1) {
-        cells = String(row[0]).split(delim).map(v => v.trim());
-      } else {
-        cells = headers.map((_, colIdx) => {
-          const val = row[colIdx];
-          if (val instanceof Date) {
-            return val.toISOString().split('T')[0];
-          }
-          return val !== undefined && val !== null ? String(val).trim() : '';
-        });
-      }
-      previewRows.push(cells);
-    }
+    // Same parser as upload: local dates/times, no UTC shift or 1899 dates.
+    const previewRows = rows.slice(0, 100).map((row) =>
+      headers.map((header) => formatPreviewValue(row[header])),
+    );
 
     return res.status(200).json({
       success: true,
       fileName: req.file.originalname,
       sheetName,
-      totalRows: validRows.length - (headerIdx + 1),
+      totalRows: rows.length,
       headers,
       previewRows
     });
@@ -676,160 +645,88 @@ exports.uploadBiometricSheet = async (req, res) => {
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-    // Resilient parse: find header row and unpack single or multi columns
+    // Same header detection/unpacking as the live preview endpoint. This is
+    // critical: previously preview showed one thing while upload stored another.
+    const startedAt = Date.now();
     const aoa = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-    let headerIndex = -1;
-    for (let i = 0; i < aoa.length; i++) {
-      const rowStr = aoa[i].join(',').toLowerCase();
-      if (rowStr.includes('userid') || rowStr.includes('empcode') || rowStr.includes('processdate') || rowStr.includes('punch1')) {
-        headerIndex = i;
-        break;
-      }
+    const headerIndex = findHeaderIndex(aoa);
+    const { headers, rows: sheetData } = unpackRows(aoa, headerIndex);
+
+    if (headerIndex < 0 || sheetData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Uploaded file has no recognizable attendance data. Expected columns like Emp Code / UserID, Date / ProcessDate and Punch1 / In Time.',
+      });
     }
 
-    let sheetData = [];
-    if (headerIndex !== -1) {
-      let headers = aoa[headerIndex];
-      let isSingleCol = false;
-      let delim = ',';
-      if (headers.length === 1 && (String(headers[0]).includes(',') || String(headers[0]).includes(';'))) {
-        isSingleCol = true;
-        delim = String(headers[0]).includes(',') ? ',' : ';';
-        headers = String(headers[0]).split(delim).map(h => h.replace(/^\uFEFF/, '').trim());
-      } else {
-        headers = headers.map(h => String(h).replace(/^\uFEFF/, '').trim());
-      }
+    const companyId = resolveCompanyId(req) || 1;
+    const requester = await resolveRequesterInfo(req);
+    const uploadedBy = requester.userId || 1;
 
-      for (let i = headerIndex + 1; i < aoa.length; i++) {
-        const row = aoa[i];
-        if (!row || row.length === 0 || (row.length === 1 && !row[0])) continue;
-        let vals = row;
-        if (isSingleCol && row.length === 1) {
-          vals = String(row[0]).split(delim).map(v => v.trim());
-        }
-        const obj = {};
-        headers.forEach((h, idx) => {
-          obj[h] = vals[idx] !== undefined ? vals[idx] : '';
-        });
-        sheetData.push(obj);
-      }
-    } else {
-      // Fallback
-      sheetData = xlsx.utils.sheet_to_json(sheet, { raw: false });
-    }
+    const terminalLogs = [
+      `[INIT] File staged: ${req.file.originalname} | Sheet: ${workbook.SheetNames[0]}`,
+      `[HEADER] Row ${headerIndex + 1}: ${headers.join(' | ')}`,
+      `[PARSE] ${sheetData.length} data row(s) detected.`,
+    ];
 
-    console.log('📄 Uploaded Sheet Rows Found:', sheetData.length);
-
-    if (!sheetData || sheetData.length === 0) {
-      return res.status(400).json({ success: false, message: 'Uploaded file has no recognizable attendance data!' });
-    }
-
-    // B. Save Audit Record in ATTENDANCE_IMPORT table
+    // B. Save Audit Record in ATTENDANCE_IMPORT table (company-scoped)
     const [importResult] = await db.query(
       `INSERT INTO ATTENDANCE_IMPORT (company_id, uploaded_by, file_name, total_records)
        VALUES (?, ?, ?, ?)`,
-      [1, 1, req.file.originalname, sheetData.length]
+      [companyId, uploadedBy, req.file.originalname, sheetData.length]
     );
     const importId = importResult.insertId;
 
     let successCount = 0;
     let failedCount = 0;
     const errors = [];
-    const terminalLogs = []; // <-- YEH JODO
     let detectedMonth = null;
     let detectedYear = null;
 
-    // Helper functions for parsing
-    function parseDate(rawDate) {
-      if (!rawDate) return { cleanDate: new Date().toISOString().split('T')[0], month: new Date().getMonth() + 1, year: new Date().getFullYear() };
-      if (rawDate instanceof Date && !isNaN(rawDate)) {
-        const y = rawDate.getFullYear();
-        const m = rawDate.getMonth() + 1;
-        const d = String(rawDate.getDate()).padStart(2, '0');
-        return { cleanDate: `${y}-${String(m).padStart(2, '0')}-${d}`, month: m, year: y };
-      }
-      if (typeof rawDate === 'number') {
-        const date = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-        const y = date.getFullYear();
-        const m = date.getMonth() + 1;
-        const d = String(date.getDate()).padStart(2, '0');
-        return { cleanDate: `${y}-${String(m).padStart(2, '0')}-${d}`, month: m, year: y };
-      }
-      const str = String(rawDate).trim();
-      if (str.includes('/')) {
-        const parts = str.split('/');
-        if (parts.length === 3) {
-          if (parts[2].length === 4) {
-            const y = parseInt(parts[2], 10);
-            const m = parseInt(parts[1], 10);
-            const d = parts[0].padStart(2, '0');
-            return { cleanDate: `${y}-${String(m).padStart(2, '0')}-${d}`, month: m, year: y };
-          }
-          if (parts[0].length === 4) {
-            const y = parseInt(parts[0], 10);
-            const m = parseInt(parts[1], 10);
-            const d = parts[2].padStart(2, '0');
-            return { cleanDate: `${y}-${String(m).padStart(2, '0')}-${d}`, month: m, year: y };
-          }
-        }
-      }
-      if (str.includes('-')) {
-        const parts = str.split('-');
-        if (parts.length === 3 && parts[0].length === 4) {
-          return { cleanDate: str.split('T')[0], month: parseInt(parts[1], 10), year: parseInt(parts[0], 10) };
-        }
-      }
-      const now = new Date();
-      return { cleanDate: now.toISOString().split('T')[0], month: now.getMonth() + 1, year: now.getFullYear() };
-    }
+    const toMinutes = (value) => {
+      if (value === null || value === undefined) return 0;
+      if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value) : 0;
+      const text = String(value).trim();
+      const clock = text.match(/^(\d{1,2}):(\d{2})/);
+      if (clock) return parseInt(clock[1], 10) * 60 + parseInt(clock[2], 10);
+      const number = parseFloat(text);
+      return Number.isFinite(number) ? number : 0;
+    };
 
-    function parseTime(rawTime) {
-      if (!rawTime) return null;
-      if (rawTime instanceof Date && !isNaN(rawTime)) {
-        const h = String(rawTime.getHours()).padStart(2, '0');
-        const m = String(rawTime.getMinutes()).padStart(2, '0');
-        const s = String(rawTime.getSeconds()).padStart(2, '0');
-        return `${h}:${m}:${s}`;
-      }
-      const str = String(rawTime).trim();
-      if (str === '' || str === '0') return null;
-      if (str.includes(' ')) {
-        const t = str.split(' ')[1];
-        return t.length === 5 ? `${t}:00` : t;
-      }
-      if (str.includes(':')) {
-        const parts = str.split(':');
-        const h = parts[0].padStart(2, '0');
-        const m = (parts[1] || '00').padStart(2, '0');
-        const s = (parts[2] || '00').padStart(2, '0');
-        return `${h}:${m}:${s}`;
-      }
+    const normaliseSheetStatus = (value) => {
+      const text = String(value ?? '').trim().toLowerCase();
+      if (['present', 'p', 'ok', 'yes'].includes(text)) return 'Present';
+      if (['late', 'l'].includes(text)) return 'Late';
+      if (['half-day', 'half day', 'halfday', 'hd'].includes(text)) return 'Half-Day';
+      if (['absent', 'a', 'no'].includes(text)) return 'Absent';
       return null;
-    }
-
-    function getNormalizedValue(row, candidates) {
-      for (const k of Object.keys(row)) {
-        const cleanKey = k.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        for (const c of candidates) {
-          if (cleanKey === c.toLowerCase().replace(/[^a-z0-9]/g, '')) {
-            if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
-              return row[k];
-            }
-          }
-        }
-      }
-      return null;
-    }
+    };
 
     // C. Process each row
-    for (const rawRow of sheetData) {
+    for (let i = 0; i < sheetData.length; i++) {
+      const rawRow = sheetData[i];
+      const rowNo = headerIndex + i + 2;
+
       const bioCodeRaw = getNormalizedValue(rawRow, ['userid', 'empcode', 'empid', 'id', 'enrollid', 'badgenumber']);
-      if (!bioCodeRaw) continue;
+      if (!bioCodeRaw) {
+        failedCount++;
+        const message = `Row ${rowNo}: missing Emp Code / UserID, skipped.`;
+        errors.push(message);
+        terminalLogs.push(`[SKIP] ${message}`);
+        continue;
+      }
       const bioCode = String(bioCodeRaw).trim();
 
       const userName = getNormalizedValue(rawRow, ['username', 'name', 'fullname', 'employeename']);
       const rawDate = getNormalizedValue(rawRow, ['processdate', 'date', 'workdate']);
       const dateInfo = parseDate(rawDate);
+      if (!dateInfo) {
+        failedCount++;
+        const message = `Row ${rowNo} (${bioCode}): invalid or missing date "${String(rawDate ?? '')}", skipped.`;
+        errors.push(message);
+        terminalLogs.push(`[SKIP] ${message}`);
+        continue;
+      }
       const cleanDate = dateInfo.cleanDate;
 
       if (!detectedMonth) {
@@ -842,57 +739,78 @@ exports.uploadBiometricSheet = async (req, res) => {
       const inTime = parseTime(rawIn);
       const outTime = parseTime(rawOut);
 
-      const lateIn = parseInt(getNormalizedValue(rawRow, ['latein', 'late']) || '0', 10);
-      const workMinutes = parseInt(getNormalizedValue(rawRow, ['worktime', 'workminutes', 'duration']) || '0', 10);
-      const overtimeHours = (parseFloat(getNormalizedValue(rawRow, ['overtime', 'ot']) || '0') / 60).toFixed(2);
+      const lateIn = toMinutes(getNormalizedValue(rawRow, ['latein', 'late']));
+      const workMinutes = toMinutes(getNormalizedValue(rawRow, ['worktime', 'workminutes', 'duration']));
+      const rawOvertime = getNormalizedValue(rawRow, ['overtime', 'ot']);
+      let overtimeHours = 0;
+      if (rawOvertime !== null) {
+        const otText = String(rawOvertime).trim();
+        if (otText.includes(':')) {
+          overtimeHours = toMinutes(otText) / 60;
+        } else {
+          const otNumber = parseFloat(otText);
+          if (Number.isFinite(otNumber)) overtimeHours = otNumber > 24 ? otNumber / 60 : otNumber;
+        }
+      }
 
-      // Match employee by biometric_emp_code OR emp_code OR full_name
+      // Match employee by biometric code within the same company only.
       const bioCodeNoZero = bioCode.replace(/^0+/, '');
       let empRows = [];
 
       const [byCode] = await db.query(
-        'SELECT employee_id, full_name, biometric_emp_code FROM EMPLOYEE WHERE biometric_emp_code = ? OR emp_code = ? OR biometric_emp_code = ? OR emp_code = ?',
-        [bioCode, bioCode, bioCodeNoZero, bioCodeNoZero]
+        `SELECT employee_id, full_name, biometric_emp_code FROM EMPLOYEE
+         WHERE (biometric_emp_code = ? OR emp_code = ? OR biometric_emp_code = ? OR emp_code = ?)
+           AND (company_id = ? OR company_id IS NULL)`,
+        [bioCode, bioCode, bioCodeNoZero, bioCodeNoZero, companyId]
       );
       empRows = byCode;
 
       if (empRows.length === 0 && userName && String(userName).trim() !== '') {
         const trimmedName = String(userName).trim();
         const [byName] = await db.query(
-          'SELECT employee_id, full_name, biometric_emp_code FROM EMPLOYEE WHERE full_name LIKE ? OR full_name LIKE ?',
-          [`%${trimmedName}%`, trimmedName]
+          `SELECT employee_id, full_name, biometric_emp_code FROM EMPLOYEE
+           WHERE (full_name LIKE ? OR full_name LIKE ?)
+             AND (company_id = ? OR company_id IS NULL)`,
+          [`%${trimmedName}%`, trimmedName, companyId]
         );
-        if (byName.length > 0) {
-          empRows = byName;
+        const exact = byName.filter(
+          (emp) => String(emp.full_name).trim().toLowerCase() === trimmedName.toLowerCase(),
+        );
+        empRows = exact.length > 0 ? exact : byName;
+        if (empRows.length > 0) {
           await db.query(
             'UPDATE EMPLOYEE SET biometric_emp_code = ? WHERE employee_id = ? AND (biometric_emp_code IS NULL OR biometric_emp_code = "")',
-            [bioCode, byName[0].employee_id]
+            [bioCode, empRows[0].employee_id]
           );
         }
       }
 
       if (empRows.length === 0) {
         failedCount++;
-        errors.push(`Staff '${userName || bioCode}' (Machine ID: ${bioCode}) not registered in system.`);
+        const message = `Row ${rowNo}: Staff '${userName || bioCode}' (Machine ID: ${bioCode}) not registered in system.`;
+        errors.push(message);
+        terminalLogs.push(`[SKIP] ${message}`);
         continue;
       }
 
-      const employeeId = empRows[0].employee_id;
+      const employee = empRows[0];
+      const employeeId = employee.employee_id;
 
-      // Status Rule:
-      let status = 'Present';
-      if (!inTime && workMinutes === 0) {
-        status = 'Absent';
-      } else if (lateIn > 0) {
-        status = 'Late';
-      } else if (workMinutes > 0 && workMinutes < 240) {
-        status = 'Half-Day';
-      } else if (inTime) {
-        const timeParts = inTime.split(':');
-        const inHour = parseInt(timeParts[0] || '9', 10);
-        const inMinute = parseInt(timeParts[1] || '0', 10);
-        if (inHour > 9 || (inHour === 9 && inMinute > 30)) {
+      // Prefer the sheet's own status; otherwise derive it from punches.
+      let status = normaliseSheetStatus(getNormalizedValue(rawRow, ['status']));
+      if (!status) {
+        status = 'Present';
+        if (!inTime && !outTime && workMinutes === 0) {
+          status = 'Absent';
+        } else if (lateIn > 0) {
           status = 'Late';
+        } else if (workMinutes > 0 && workMinutes < 240) {
+          status = 'Half-Day';
+        } else if (inTime) {
+          const timeParts = inTime.split(':');
+          const inHour = parseInt(timeParts[0] || '9', 10);
+          const inMinute = parseInt(timeParts[1] || '0', 10);
+          if (inHour > 9 || (inHour === 9 && inMinute > 30)) status = 'Late';
         }
       }
 
@@ -918,32 +836,37 @@ exports.uploadBiometricSheet = async (req, res) => {
       }
 
       successCount++;
-    }
-
-    // Update audit
-
-       try {
-      await db.query(
-        'UPDATE ATTENDANCE_IMPORT SET success_count = ?, failed_count = ?, error_logs = ? WHERE import_id = ?',
-        [successCount, failedCount, JSON.stringify(errors.slice(0, 50)), importId]
+      terminalLogs.push(
+        `[OK] Row ${rowNo}: ${employee.full_name || bioCode} | ${cleanDate} | In ${inTime || '--:--'} | Out ${outTime || '--:--'} | ${status}`,
       );
-    } catch (_) {
-      try {
-        await db.query(
-          'UPDATE ATTENDANCE_IMPORT SET success_count = ?, failed_count = ? WHERE import_id = ?',
-          [successCount, failedCount, importId]
-        );
-      } catch (_) {}
+      if (!inTime || !outTime) {
+        terminalLogs.push(`[WARN] Row ${rowNo}: one or both punch times are missing; stored as blank.`);
+      }
     }
 
-    terminalLogs.push(`[COMPLETE] Synchronization finished: ${successCount} Synced, ${failedCount} Skipped/Unmatched. Total: ${sheetData.length}.`);
+    errors.forEach((error) => {
+      if (!String(error).startsWith('Row ')) terminalLogs.push(`[WARN] ${error}`);
+    });
+
+    // Update audit using columns that exist in the committed schema.
+    await db.query(
+      'UPDATE ATTENDANCE_IMPORT SET success_count = ?, error_log = ? WHERE import_id = ?',
+      [successCount, JSON.stringify(errors.slice(0, 50)), importId]
+    );
+
+    const executionMs = Date.now() - startedAt;
+    terminalLogs.push(
+      `[COMPLETE] Synchronization finished: ${successCount} Synced, ${failedCount} Skipped/Unmatched. Total: ${sheetData.length}. Time: ${executionMs}ms.`,
+    );
 
     return res.status(200).json({
       success: true,
-      message: `Processed ${sheetData.length} records: ${successCount} Success, ${failedCount} Errors.`,
+      message: successCount === 0
+        ? `No attendance rows were synced. ${failedCount} row(s) were skipped — check the terminal log.`
+        : `Processed ${sheetData.length} records: ${successCount} Success, ${failedCount} Errors.`,
       importedMonth: detectedMonth,
       importedYear: detectedYear,
-      summary: { totalRows: sheetData.length, successCount, failedCount, errors },
+      summary: { totalRows: sheetData.length, successCount, failedCount, errors, executionMs },
       logs: terminalLogs
     });
 
@@ -1126,7 +1049,7 @@ exports.getLeaves = async (req, res) => {
       } catch (_) {}
     }
 
-    const { employee_id, user_id } = req.query;
+    const { employee_id, user_id, month, year, start_date, end_date } = req.query;
     const companyId = resolveCompanyId(req);
 
     let query = `
@@ -1160,6 +1083,10 @@ exports.getLeaves = async (req, res) => {
       query += ` AND e.user_id = ?`;
       params.push(user_id);
     }
+
+    const dateFilter = buildLeaveDateFilter({ month, year, start_date, end_date });
+    query += dateFilter.clause;
+    params.push(...dateFilter.params);
 
     query += ` ORDER BY l.leave_id DESC`;
 
@@ -2296,8 +2223,9 @@ exports.updateEmployeeStatus = async (req, res) => {
       const params = [];
 
       if (companyId) {
-        query += ` AND (a.company_id = ? OR e.company_id = ?)`;
-        params.push(companyId, companyId);
+        // ATTENDANCE has no company_id column; tenant scope comes from EMPLOYEE.
+        query += ` AND (e.company_id = ? OR e.company_id IS NULL)`;
+        params.push(companyId);
       }
 
       if (employee_id) {
@@ -2746,26 +2674,32 @@ exports.getIncrements = async (req, res) => {
 // GET ATTENDANCE IMPORT AUDIT LOGS
 exports.getAttendanceImports = async (req, res) => {
   try {
-    let rows = [];
-    try {
-      const [r] = await db.query(`
-        SELECT import_id, file_name, total_records, success_count, failed_count, error_logs, created_at
-        FROM ATTENDANCE_IMPORT
-        ORDER BY import_id DESC
-        LIMIT 50
-      `);
-      rows = r;
-    } catch (_) {
-      const [r] = await db.query(`
-        SELECT import_id, file_name, total_records, success_count, failed_count, created_at
-        FROM ATTENDANCE_IMPORT
-        ORDER BY import_id DESC
-        LIMIT 50
-      `);
-      rows = r;
+    const companyId = resolveCompanyId(req);
+    const params = [];
+    let where = '';
+
+    if (companyId) {
+      where = ' WHERE company_id = ?';
+      params.push(companyId);
     }
+    params.push(50);
+
+    // The committed schema stores error_log / uploaded_at and derives failed
+    // count from total_records - success_count (there is no failed_count column).
+    const [rows] = await db.query(
+      `SELECT import_id, file_name, total_records, success_count,
+              GREATEST(total_records - success_count, 0) AS failed_count,
+              error_log AS error_logs, uploaded_at AS created_at
+       FROM ATTENDANCE_IMPORT
+       ${where}
+       ORDER BY import_id DESC
+       LIMIT ?`,
+      params
+    );
+
     return res.status(200).json({ success: true, data: rows });
   } catch (error) {
+    console.error('Get Attendance Imports Error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

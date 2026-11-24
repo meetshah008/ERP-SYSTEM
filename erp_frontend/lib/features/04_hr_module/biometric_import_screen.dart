@@ -20,6 +20,8 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
   String? _pickedFileName;
   Uint8List? _pickedFileBytes;
   List<String> _consoleLogs = [];
+  Map<String, dynamic>? _lastImportResult;
+  bool _uploadSnackbarActive = false;
 
   // Excel Sheet Live Preview Variables
   bool _isPreviewLoading = false;
@@ -58,7 +60,8 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
 
     try {
       final uri = Uri.parse('${ApiClient.apiHost}/api/hr/preview-attendance');
-      final request = http.MultipartRequest('POST', uri);
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(await ApiClient.getMultipartHeaders());
       request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
 
       final streamedRes = await request.send();
@@ -125,7 +128,7 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
             '================================================================================',
             '  BIOMETRIC ATTENDANCE INGESTION CONSOLE  |  STANDBY',
             '================================================================================',
-            '[SYSTEM] Staged File: "$_pickedFileName" (${(file.size / 1024).toStringAsFixed(1)} KB)',
+            '[SYSTEM] Staged File: "${file.name}" (${(file.size / 1024).toStringAsFixed(1)} KB)',
             '[READY] Click "Process & Sync Attendance" to run parser engine and view live terminal logs.',
           ];
         });
@@ -157,7 +160,8 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
 
     try {
       final uri = Uri.parse('${ApiClient.apiHost}/api/hr/upload-attendance');
-      final request = http.MultipartRequest('POST', uri);
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(await ApiClient.getMultipartHeaders());
       request.files.add(
         http.MultipartFile.fromBytes('file', _pickedFileBytes!, filename: _pickedFileName),
       );
@@ -171,15 +175,26 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
       if (res.statusCode == 200 && data['success'] == true) {
         final List<dynamic> backendLogs = data['logs'] ?? [];
         final summary = data['summary'] ?? {};
+        final importedMonth = int.tryParse('${data['importedMonth'] ?? ''}');
+        final importedYear = int.tryParse('${data['importedYear'] ?? ''}');
+        final synced = int.tryParse('${summary['successCount'] ?? 0}') ?? 0;
+        final failed = int.tryParse('${summary['failedCount'] ?? 0}') ?? 0;
 
         setState(() {
           _consoleLogs = backendLogs.map((e) => e.toString()).toList();
-          _totalRows = summary['totalRows'] ?? 0;
-          _successCount = summary['successCount'] ?? 0;
-          _failedCount = summary['failedCount'] ?? 0;
-          _executionMs = summary['executionMs'] ?? 0;
-          _pickedFileName = null;
-          _pickedFileBytes = null;
+          _totalRows = int.tryParse('${summary['totalRows'] ?? 0}') ?? 0;
+          _successCount = synced;
+          _failedCount = failed;
+          _executionMs = int.tryParse('${summary['executionMs'] ?? 0}') ?? 0;
+          _lastImportResult = {
+            'importedMonth': importedMonth,
+            'importedYear': importedYear,
+          };
+          // Keep the staged file when nothing synced, so the user can retry.
+          if (synced > 0) {
+            _pickedFileName = null;
+            _pickedFileBytes = null;
+          }
         });
 
         if (_autoScroll) {
@@ -194,12 +209,35 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
           });
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        final messenger = ScaffoldMessenger.of(context);
+        setState(() => _uploadSnackbarActive = true);
+        final snackbarController = messenger.showSnackBar(
           SnackBar(
-            content: Text('Synced $_successCount punches, $_failedCount unmatched rows.'),
-            backgroundColor: const Color(0xFF059669),
+            content: Text(
+              synced == 0
+                  ? 'No rows synced. $_failedCount row(s) skipped — check the terminal log.'
+                  : 'Synced $synced punches, $failed unmatched rows.',
+            ),
+            backgroundColor: synced > 0 ? const Color(0xFF059669) : const Color(0xFFF59E0B),
+            action: SnackBarAction(
+              label: 'VIEW',
+              textColor: Colors.white,
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                Navigator.pop(context, _lastImportResult);
+              },
+            ),
+            duration: const Duration(seconds: 4),
           ),
         );
+        snackbarController.closed.whenComplete(() {
+          if (mounted) setState(() => _uploadSnackbarActive = false);
+        });
+        // Explicit safety net: some web builds keep an action SnackBar visible
+        // after its duration, so hide it if it is still ours.
+        Future.delayed(const Duration(seconds: 4), () {
+          if (mounted && _uploadSnackbarActive) messenger.hideCurrentSnackBar();
+        });
       } else {
         setState(() {
           _consoleLogs.add('[FATAL] Upload failed: ${data['message']}');
@@ -285,7 +323,7 @@ class _BiometricImportScreenState extends State<BiometricImportScreen> {
                   children: [
                     IconButton(
                       icon: Icon(Icons.arrow_back, color: textTitle),
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pop(context, _lastImportResult),
                     ),
                     const SizedBox(width: 8),
                     Container(

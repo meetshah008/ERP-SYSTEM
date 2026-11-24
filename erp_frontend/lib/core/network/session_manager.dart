@@ -104,6 +104,7 @@ class SessionManager {
     await prefs.remove(keyCompanyName);
     await prefs.remove(keyUserId);
     await prefs.remove(keyCompanyId);
+    await prefs.remove(keyEmployeeId);
     await prefs.remove(keyPermissions);
   }
 }

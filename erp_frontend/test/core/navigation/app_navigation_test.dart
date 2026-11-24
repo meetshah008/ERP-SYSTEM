@@ -27,6 +27,7 @@ void main() {
         'Module Manager',
         _perms(const [
           'hr_view_directory',
+          'hr_manage_staff',
           'attendance_view_logs',
           'leaves_apply',
           'tasks_create_self',
@@ -44,6 +45,7 @@ void main() {
       // Items removed from the sidebar stay hidden even when permitted.
       expect(visible, isNot(contains('Employee Management')));
       expect(visible, isNot(contains('Employee Lifecycle')));
+      expect(visible, isNot(contains('Employee Onboarding')));
       expect(visible, isNot(contains('Leave Approvals')));
 
       // Unrelated and ungranted modules stay hidden.
@@ -208,7 +210,7 @@ void main() {
         'attendance_override',
         'attendance_biometric_tools',
         'tasks_timesheet',
-        'hr_manage_staff',
+        'hr_onboarding',
         'hr_lifecycle',
         'leaves_approve',
       ]) {

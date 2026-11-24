@@ -4,7 +4,6 @@ import '../../features/04_hr_module/attendance_screen.dart';
 import '../../features/04_hr_module/biometric_import_screen.dart';
 import '../../features/04_hr_module/departments_screen.dart';
 import '../../features/04_hr_module/employee_management_screen.dart';
-import '../../features/04_hr_module/employee_onboarding_screen.dart';
 import '../../features/04_hr_module/leave_management_screen.dart';
 import '../../features/04_hr_module/salary_increment_screen.dart';
 import '../../features/05_tasks/project_edit_screen.dart';
@@ -106,14 +105,6 @@ abstract final class AppNavCatalog {
           permissionKey: 'hr_view_directory',
           screenBuilder: _openEmployeeManagement,
           description: 'Browse the company employee directory',
-        ),
-        AppNavItem(
-          id: 'hr_onboarding',
-          label: 'Employee Onboarding',
-          icon: Icons.person_add_alt_1_outlined,
-          module: AppNavModule.hr,
-          permissionKey: 'hr_manage_staff',
-          screenBuilder: () => const EmployeeOnboardingScreen(),
         ),
         AppNavItem(
           id: 'attendance_logs',

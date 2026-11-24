@@ -138,7 +138,8 @@ async function resolveRequesterInfo(req) {
     } catch (_) {}
   }
 
-  const isSuperAdmin = role === 'Super Admin' || role === 'admin';
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  const isSuperAdmin = normalizedRole.includes('admin');
 
   return {
     employeeId: employeeId ? parseInt(employeeId, 10) : null,

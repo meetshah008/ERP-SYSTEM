@@ -47,6 +47,14 @@ class ApiClient {
     return headers;
   }
 
+  /// Headers for multipart uploads. The browser/http package must set the
+  /// Content-Type itself (including the multipart boundary), so it is removed.
+  static Future<Map<String, String>> getMultipartHeaders() async {
+    final headers = await getHeaders();
+    headers.remove('Content-Type');
+    return headers;
+  }
+
   /// Automatically authenticated and multi-tenant scoped GET request
   static Future<http.Response> get(Uri uri, {Map<String, String>? headers}) async {
     final h = await getHeaders(headers);
