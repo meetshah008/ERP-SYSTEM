@@ -1727,7 +1727,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         const SizedBox(height: 22),
 
         // 5. MODULE IMAGE RAIL (horizontal image scrolling)
-        _buildMobileModuleRail(isDark),
+        // _buildMobileModuleRail(isDark),
 
         // 6. LIVE OVERVIEW
         MobileSectionHeader(
@@ -1780,27 +1780,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         const SizedBox(height: 22),
 
         // 5. TEAM SPOTLIGHT
-        if (_hasPermission('hr_view_directory')) ...[
-          MobileSectionHeader(
-            title: 'Team Spotlight',
-            subtitle: _employees.isEmpty
-                ? 'Build your workforce directory'
-                : '${_employees.length} people across ${_departments.length} departments',
-            actionLabel: 'See all',
-            onAction: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const EmployeeManagementScreen(),
-              ),
-            ).then((_) => _fetchLiveStats()),
-            isDark: isDark,
-          ),
-          const SizedBox(height: 10),
-          _buildMobileTeamStories(isDark),
-          const SizedBox(height: 8),
-          _buildMobileTeamSpotlight(isDark),
-          const SizedBox(height: 22),
-        ],
+        // if (_hasPermission('hr_view_directory')) ...[
+        //   MobileSectionHeader(
+        //     title: 'Team Spotlight',
+        //     subtitle: _employees.isEmpty
+        //         ? 'Build your workforce directory'
+        //         : '${_employees.length} people across ${_departments.length} departments',
+        //     actionLabel: 'See all',
+        //     onAction: () => Navigator.push(
+        //       context,
+        //       MaterialPageRoute(
+        //         builder: (_) => const EmployeeManagementScreen(),
+        //       ),
+        //     ).then((_) => _fetchLiveStats()),
+        //     isDark: isDark,
+        //   ),
+        //   const SizedBox(height: 10),
+        //   _buildMobileTeamStories(isDark),
+        //   const SizedBox(height: 8),
+        //   _buildMobileTeamSpotlight(isDark),
+        //   const SizedBox(height: 22),
+        // ],
 
         // 7. SECURITY / ROLE FOOTER
         Padding(
@@ -4232,27 +4232,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         const SizedBox(height: 22),
 
         // Team spotlight
-        if (_hasPermission('hr_view_directory')) ...[
-          MobileSectionHeader(
-            title: 'Team Members',
-            subtitle: _employees.isEmpty
-                ? 'Add your first employee'
-                : '${_employees.length} people in your plant',
-            actionLabel: 'See all',
-            onAction: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const EmployeeManagementScreen(),
-              ),
-            ).then((_) => _fetchLiveStats()),
-            isDark: isDark,
-          ),
-          const SizedBox(height: 10),
-          _buildMobileTeamStories(isDark),
-          const SizedBox(height: 8),
-          _buildMobileTeamSpotlight(isDark),
-          const SizedBox(height: 24),
-        ],
+        // if (_hasPermission('hr_view_directory')) ...[
+        //   MobileSectionHeader(
+        //     title: 'Team Members',
+        //     subtitle: _employees.isEmpty
+        //         ? 'Add your first employee'
+        //         : '${_employees.length} people in your plant',
+        //     actionLabel: 'See all',
+        //     onAction: () => Navigator.push(
+        //       context,
+        //       MaterialPageRoute(
+        //         builder: (_) => const EmployeeManagementScreen(),
+        //       ),
+        //     ).then((_) => _fetchLiveStats()),
+        //     isDark: isDark,
+        //   ),
+        //   const SizedBox(height: 10),
+        //   _buildMobileTeamStories(isDark),
+        //   const SizedBox(height: 8),
+        //   _buildMobileTeamSpotlight(isDark),
+        //   const SizedBox(height: 24),
+        // ],
       ],
     );
   }
