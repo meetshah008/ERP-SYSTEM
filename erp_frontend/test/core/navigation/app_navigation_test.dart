@@ -125,9 +125,11 @@ void main() {
           'tasks_view',
           'projects_create',
           'projects_edit',
+          'projects_delete',
           'tasks_create_assign',
           'tasks_create_self',
           'tasks_edit',
+          'tasks_delete',
           'tasks_log_timesheet',
         ]);
         final visible = labels(AppNavResolver.resolve(role, perms));
@@ -138,9 +140,11 @@ void main() {
         for (final label in const [
           'Create Project',
           'Project Workspace',
+          'Project Deletion',
           'Assign Task',
           'Personal Tasks',
           'Task Editing',
+          'Task Deletion',
         ]) {
           expect(
             visible,
@@ -149,6 +153,20 @@ void main() {
           );
         }
       }
+
+      // Other roles keep the entries when the backend grants the permissions.
+      final employeeVisible = labels(
+        AppNavResolver.resolve(
+          'Employee',
+          _perms(const [
+            'tasks_view',
+            'projects_delete',
+            'tasks_delete',
+          ]),
+        ),
+      );
+      expect(employeeVisible, contains('Project Deletion'));
+      expect(employeeVisible, contains('Task Deletion'));
     });
 
     test('Super Admin resolver exposes everything (original UI stays in use)', () {

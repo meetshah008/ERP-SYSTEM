@@ -36804,7 +36804,7 @@ $2(a,b){this.a.$2(B.c.eI(a,t.m),b)},
 $S:512}
 A.aZ_.prototype={
 $1(a){var s=A.b3(a)
-if(B.a9y.n(0,B.c.gau(s.gAL())))return s.k(0)
+if(B.a9x.n(0,B.c.gau(s.gAL())))return s.k(0)
 v.G.window.console.error("URL rejected by TrustedTypes policy flutter-engine: "+a+"(download prevented)")
 return null},
 $S:314}
@@ -51789,7 +51789,7 @@ $0(){return B.rN},
 $S:393}
 A.a8i.prototype={
 $1(a){var s
-if(A.b_u(this.a,this.b,a.e))s=!(this.c&&B.a9w.n(0,a.a))
+if(A.b_u(this.a,this.b,a.e))s=!(this.c&&B.a9y.n(0,a.a))
 else s=!1
 return s},
 $S:394}
@@ -105488,7 +105488,7 @@ if(g.f){s=g.c.a.a
 s=B.f.an(g.e,s.length)
 $.ao.toString
 $.br()
-r=B.a9x.n(0,A.bm())
+r=B.a9w.n(0,A.bm())
 if(r){q=i.y1>0?i.y2:h
 if(q!=null&&q>=0&&q<s.length){g=q+1
 s=B.f.mJ(s,q,g,B.f.ac(i.a.c.a.a,q,g))}}g=i.fr
@@ -129903,12 +129903,12 @@ B.O=new A.H8(0,"none")
 B.rY=new A.H8(1,"valid")
 B.rZ=new A.H8(2,"invalid")
 B.t_=new A.fF([B.dZ,B.n7,B.rw],A.b6("fF<nQ>"))
-B.a5J={projects_create:0,projects_workspace:1,tasks_assign:2,tasks_self:3,tasks_edit:4}
-B.a9w=new A.hg(B.a5J,5,t.fF)
-B.a9x=new A.fF([B.bn,B.cr,B.aB],t.MA)
+B.a9w=new A.fF([B.bn,B.cr,B.aB],t.MA)
 B.a5z={"canvaskit.js":0}
-B.a9y=new A.hg(B.a5z,1,t.fF)
+B.a9x=new A.hg(B.a5z,1,t.fF)
 B.IN=new A.fF([B.eo,B.cI,B.bH,B.df,B.cJ],t.Lu)
+B.a5J={projects_create:0,projects_workspace:1,projects_delete:2,tasks_assign:3,tasks_self:4,tasks_edit:5,tasks_delete:6}
+B.a9y=new A.hg(B.a5J,7,t.fF)
 B.a5M={click:0,keyup:1,keydown:2,mouseup:3,mousedown:4,pointerdown:5,pointerup:6}
 B.a9z=new A.hg(B.a5M,7,t.fF)
 B.IO=new A.fF([B.bn,B.aB,B.cr],t.MA)

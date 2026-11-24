@@ -360,9 +360,11 @@ abstract final class AppNavResolver {
   static const Set<String> _hiddenForProjectsManager = {
     'projects_create',
     'projects_workspace',
+    'projects_delete',
     'tasks_assign',
     'tasks_self',
     'tasks_edit',
+    'tasks_delete',
   };
 
   /// Shared Projects-module-manager detection.
