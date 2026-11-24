@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/display_name.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../02_auth/login_screen.dart';
 import '../04_hr_module/employee_management_screen.dart';
@@ -205,6 +206,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       _sessionUserId = int.tryParse(session['userId']?.toString() ?? '');
     });
   }
+
+  String get _companyLabel => cleanCompanyName(widget.companyName);
 
   String get _effectiveUserName {
     if (_displayName.isNotEmpty) return _displayName;
@@ -835,7 +838,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         child: _useDynamicSidebar
                             ? PermissionSidebar(
                                 groups: _navGroups,
-                                companyName: widget.companyName,
+                                companyName: _companyLabel,
                                 role: widget.role,
                                 userName: _effectiveUserName,
                                 activeNavId: _activeNavId,
@@ -1177,7 +1180,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      widget.companyName.toUpperCase(),
+                      _companyLabel.toUpperCase(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1246,7 +1249,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.companyName.toUpperCase(),
+                          _companyLabel.toUpperCase(),
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -5858,7 +5861,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   _buildMobileInfoRow(
                     icon: Icons.business_rounded,
                     label: 'COMPANY',
-                    value: widget.companyName,
+                    value: _companyLabel,
                     isDark: isDark,
                   ),
                   Divider(color: MobilePalette.hairline(isDark), height: 1),

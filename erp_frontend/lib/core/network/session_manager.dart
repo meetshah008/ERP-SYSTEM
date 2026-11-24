@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/display_name.dart';
 
 /// SessionManager handles storing and retrieving user login state, JWT tokens,
 /// and profile info across Web LocalStorage, Windows, and Mobile.
@@ -33,7 +34,7 @@ class SessionManager {
     await prefs.setBool(keyIsLoggedIn, true);
     await prefs.setString(keyEmail, email);
     await prefs.setString(keyRole, role);
-    await prefs.setString(keyCompanyName, companyName);
+    await prefs.setString(keyCompanyName, cleanCompanyName(companyName));
     if (fullName != null && fullName.isNotEmpty) {
       await prefs.setString(keyFullName, fullName);
     }

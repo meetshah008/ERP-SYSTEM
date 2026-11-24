@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../navigation/app_navigation.dart';
 import '../theme/enterprise_theme.dart';
+import '../utils/display_name.dart';
 
 /// Reusable, permission-driven sidebar for every non-Super-Admin role.
 ///
@@ -126,7 +127,7 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.companyName.toUpperCase(),
+                cleanCompanyName(widget.companyName).toUpperCase(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
