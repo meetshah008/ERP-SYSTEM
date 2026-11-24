@@ -66588,10 +66588,9 @@ $1(a){var s=this.a
 s.t(new A.aWq(s,a))},
 $S:27}
 A.aWq.prototype={
-$0(){var s=this.a,r=s.z,q=this.b
-if(B.b.n(r,q))B.b.L(r,q)
-else r.push(q)
-if(r.length!==0)s.ay="REVIEW"},
+$0(){var s=this.a.z,r=this.b
+if(B.b.n(s,r))B.b.L(s,r)
+else s.push(r)},
 $S:0}
 A.aWz.prototype={
 $1(a){var s=this.a,r=s.dx,q=A.a6(r).i("ag<1,dJ<v>>")

@@ -53,10 +53,13 @@ function canApproveTask({ isSuperAdmin = false, employeeId = null, reviewerIds =
   return !Number.isNaN(id) && ids.includes(id);
 }
 
-/** A newly created task with reviewers starts in REVIEW for immediate approval. */
+/** A newly created task with reviewers starts in TODO (or requested status, never jumping straight to DONE). */
 function initialTaskStatus(status, reviewerIds = []) {
   const requested = normalizeStatus(status, 'TODO');
-  return hasReviewers(reviewerIds) ? 'REVIEW' : requested;
+  if (hasReviewers(reviewerIds) && requested === 'DONE') {
+    return 'TODO';
+  }
+  return requested;
 }
 
 function nextAssigneeStatus(currentStatus, reviewerIds = []) {

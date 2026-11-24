@@ -35,9 +35,10 @@ test('only a chosen reviewer or admin can approve from REVIEW', () => {
   assert.equal(canApproveTask({ employeeId: 7, reviewerIds: [], currentStatus: 'REVIEW' }), false);
 });
 
-test('new tasks with reviewers start in REVIEW', () => {
-  assert.equal(initialTaskStatus('TODO', [7]), 'REVIEW');
-  assert.equal(initialTaskStatus('DONE', [7]), 'REVIEW');
+test('new tasks with reviewers start in TODO (or requested status, blocking direct DONE)', () => {
+  assert.equal(initialTaskStatus('TODO', [7]), 'TODO');
+  assert.equal(initialTaskStatus('IN_PROGRESS', [7]), 'IN_PROGRESS');
+  assert.equal(initialTaskStatus('DONE', [7]), 'TODO');
   assert.equal(initialTaskStatus('IN_PROGRESS', []), 'IN_PROGRESS');
 });
 
