@@ -80,17 +80,20 @@ async function testConnection() {
     `);
 
     // 2C. Auto-create task_reviewers (multi-reviewer approval support)
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS task_reviewers (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        task_id INT NOT NULL,
-        employee_id INT NOT NULL,
-        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_task_reviewer (task_id, employee_id),
-        FOREIGN KEY (task_id) REFERENCES task(task_id) ON DELETE CASCADE,
-        FOREIGN KEY (employee_id) REFERENCES EMPLOYEE(employee_id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
+    try {
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS task_reviewers (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          task_id INT NOT NULL,
+          employee_id INT NOT NULL,
+          assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_task_reviewer (task_id, employee_id),
+          INDEX idx_tr_task (task_id),
+          INDEX idx_tr_emp (employee_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      await connection.query("CREATE OR REPLACE VIEW TASK_REVIEWERS AS SELECT * FROM task_reviewers");
+    } catch (_) {}
 
     // 3. Ensure EMPLOYEE columns exist
     const columns = [
@@ -133,6 +136,11 @@ async function testConnection() {
     // Older schemas used ENUM without REVIEW; VARCHAR keeps all legacy values.
     try {
       await connection.query("ALTER TABLE task MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'TODO'");
+    } catch (_) {}
+
+    // Refresh views so all new columns (assigned_by, reviewed_by, etc.) are visible
+    try {
+      await connection.query("CREATE OR REPLACE VIEW TASK AS SELECT * FROM task");
     } catch (_) {}
 
     console.log('✅ Master Database tables & columns verified!');
