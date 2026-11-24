@@ -47,7 +47,6 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   // Edit Form Controllers
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
-  final _hoursCtrl = TextEditingController();
   final _newSubtaskCtrl = TextEditingController();
   String _selectedPriority = 'MEDIUM';
   String _selectedStatus = 'TODO';
@@ -82,6 +81,26 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   }
 
   bool get _canManageTask => _isAssignee || _isSuperAdmin;
+
+  List<dynamic> get _reviewers {
+    final value = _task?['reviewers'];
+    return value is List ? value : const <dynamic>[];
+  }
+
+  bool get _hasReviewers => _reviewers.isNotEmpty;
+
+  bool get _isReviewer {
+    if (_currentEmployeeId == null) return false;
+    for (final r in _reviewers) {
+      final id = r is Map ? r['employee_id'] : r;
+      if (id?.toString() == _currentEmployeeId.toString()) return true;
+    }
+    return false;
+  }
+
+  bool get _isInReview => (_task?['status'] ?? _selectedStatus).toString().toUpperCase() == 'REVIEW';
+
+  bool get _canApproveTask => _isInReview && (_isReviewer || _isSuperAdmin);
 
   @override
   void initState() {
@@ -164,7 +183,6 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
-    _hoursCtrl.dispose();
     _newSubtaskCtrl.dispose();
     _logHoursCtrl.dispose();
     _logDescCtrl.dispose();
@@ -175,7 +193,6 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     if (_task == null) return;
     _titleCtrl.text = _task!['title']?.toString() ?? '';
     _descCtrl.text = _task!['description']?.toString() ?? '';
-    _hoursCtrl.text = (_task!['estimated_hours'] ?? 0).toString();
     _selectedPriority = (_task!['priority'] ?? 'MEDIUM').toString().toUpperCase();
     _selectedStatus = (_task!['status'] ?? 'TODO').toString().toUpperCase();
     if (_task!['assigned_to'] != null) {
@@ -231,6 +248,11 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
       return;
     }
 
+    if (newStatus.toUpperCase() == 'DONE' && _hasReviewers) {
+      _showSnackbar('This task can only be completed after a reviewer approves it.', isSuccess: false);
+      return;
+    }
+
     final prevStatus = _selectedStatus;
     setState(() {
       _selectedStatus = newStatus;
@@ -267,6 +289,56 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
         if (_task != null) _task!['status'] = prevStatus;
       });
       _showSnackbar('Error updating status: $e', isSuccess: false);
+    }
+  }
+
+  // 2B. APPROVE REVIEW (Only a chosen reviewer or admin)
+  Future<void> _approveTask() async {
+    if (!_canApproveTask) {
+      _showSnackbar('Only a chosen reviewer or admin can approve this task.', isSuccess: false);
+      return;
+    }
+    try {
+      final res = await ApiClient.post(
+        Uri.parse('$_apiHost/api/tasks/${widget.taskId}/approve'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({}),
+      );
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        widget.onTaskUpdated?.call();
+        await _fetchTaskDetails();
+        _showSnackbar('Task approved — marked as Completed!', isSuccess: true);
+      } else {
+        _showSnackbar(data['message'] ?? 'Could not approve task.', isSuccess: false);
+      }
+    } catch (e) {
+      _showSnackbar('Error approving task: $e', isSuccess: false);
+    }
+  }
+
+  // 2C. RETURN FOR REVISION
+  Future<void> _returnForRevision() async {
+    if (!_canApproveTask) {
+      _showSnackbar('Only a chosen reviewer or admin can return this task.', isSuccess: false);
+      return;
+    }
+    try {
+      final res = await ApiClient.post(
+        Uri.parse('$_apiHost/api/tasks/${widget.taskId}/reject-review'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({}),
+      );
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        widget.onTaskUpdated?.call();
+        await _fetchTaskDetails();
+        _showSnackbar('Task returned for revision.', isSuccess: true);
+      } else {
+        _showSnackbar(data['message'] ?? 'Could not return task.', isSuccess: false);
+      }
+    } catch (e) {
+      _showSnackbar('Error returning task: $e', isSuccess: false);
     }
   }
 
@@ -471,6 +543,8 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
         return const Color(0xFF10B981);
       case 'IN_PROGRESS':
         return const Color(0xFF2563EB);
+      case 'REVIEW':
+        return const Color(0xFF8B5CF6);
       case 'TODO':
       default:
         return const Color(0xFF64748B);
@@ -696,15 +770,17 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
               ),
               const SizedBox(width: 8),
 
-              // Status Badge / Controls (Only assigned employee or admin can change status)
-              if (_canManageTask) ...[
+              // Status controls: assignees can send to REVIEW, reviewers approve to DONE
+              if (_canManageTask)
                 PopupMenuButton<String>(
                   tooltip: 'Change Status',
                   onSelected: _updateStatus,
                   itemBuilder: (ctx) => [
                     const PopupMenuItem(value: 'TODO', child: Text('⏳ TO DO')),
                     const PopupMenuItem(value: 'IN_PROGRESS', child: Text('⚡ IN PROGRESS')),
-                    const PopupMenuItem(value: 'DONE', child: Text('✅ COMPLETED')),
+                    const PopupMenuItem(value: 'REVIEW', child: Text('🔎 FOR REVIEW')),
+                    if (!_hasReviewers)
+                      const PopupMenuItem(value: 'DONE', child: Text('✅ COMPLETED')),
                   ],
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -724,18 +800,27 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                       ],
                     ),
                   ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(
-                    isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                    color: isDone ? const Color(0xFF10B981) : textSub,
-                    size: 26,
+                )
+              else if (_canApproveTask)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: statColor.withValues(alpha: 0.4)),
                   ),
-                  tooltip: isDone ? 'Mark as Not Done' : 'Mark as Done',
-                  onPressed: () => _updateStatus(isDone ? 'TODO' : 'DONE'),
-                ),
-              ] else ...[
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.fact_check_rounded, size: 14, color: statColor),
+                      const SizedBox(width: 4),
+                      Text(status, style: TextStyle(color: statColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 4),
+                      Text('Reviewer', style: TextStyle(color: statColor, fontSize: 9.5)),
+                    ],
+                  ),
+                )
+              else ...[
                 // Read-Only Status Indicator for other members
                 Tooltip(
                   message: 'Status: $status (Only assigned employee or admin can update)',
@@ -758,8 +843,39 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                     ),
                   ),
                 ),
-                const Spacer(),
               ],
+              const Spacer(),
+              if (_canApproveTask) ...[
+                IconButton(
+                  icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 26),
+                  tooltip: 'Approve & Complete',
+                  onPressed: _approveTask,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.undo_rounded, color: Color(0xFFF59E0B), size: 24),
+                  tooltip: 'Return for Revision',
+                  onPressed: _returnForRevision,
+                ),
+              ] else if (_canManageTask)
+                IconButton(
+                  icon: Icon(
+                    isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                    color: isDone ? const Color(0xFF10B981) : textSub,
+                    size: 26,
+                  ),
+                  tooltip: isDone
+                      ? 'Mark as Not Done'
+                      : (_hasReviewers ? 'Send for Review' : 'Mark as Done'),
+                  onPressed: () {
+                    if (isDone) {
+                      _updateStatus('TODO');
+                    } else if (_hasReviewers) {
+                      _updateStatus('REVIEW');
+                    } else {
+                      _updateStatus('DONE');
+                    }
+                  },
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -829,13 +945,17 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
   }
 
-  // 2. WORKER & ESTIMATES ROW
+  // 2. WORKER & REVIEW ROW
   Widget _buildWorkerAndEstimatesRow(Color cardBg, Color cardBorder, Color textTitle, Color textSub, bool isDark) {
     final worker = _task?['assigned_worker'] ?? 'Unassigned';
     final empCode = _task?['emp_code'] ?? 'N/A';
     final desig = _task?['worker_designation'] ?? 'Operator';
-    final estHours = (_task?['estimated_hours'] ?? 0).toString();
-    final actHours = (_task?['actual_hours'] ?? 0).toString();
+    final assignedBy = (_task?['assigned_by_name'] ?? '').toString();
+    final reviewerNames = _reviewers
+        .map((r) => r is Map ? (r['full_name'] ?? '').toString() : r.toString())
+        .where((name) => name.isNotEmpty)
+        .join(', ');
+    final reviewedById = _task?['reviewed_by'];
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -879,7 +999,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
           ),
           SizedBox(width: isNarrow ? 0 : 14, height: isNarrow ? 12 : 0),
 
-          // Hours & Estimates Card
+          // Review & Approval Card
           Expanded(
             flex: isNarrow ? 0 : 1,
             child: Container(
@@ -889,38 +1009,40 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: cardBorder),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
                     children: [
-                      Text('Estimated', style: TextStyle(color: textSub, fontSize: 11, fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(Icons.timer_outlined, size: 16, color: Color(0xFF2563EB)),
-                          const SizedBox(width: 4),
-                          Text('${estHours}h', style: TextStyle(color: textTitle, fontSize: 16, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
+                      const Icon(Icons.fact_check_rounded, size: 16, color: Color(0xFF8B5CF6)),
+                      const SizedBox(width: 6),
+                      Text('Review & Approval', style: TextStyle(color: textTitle, fontSize: 13, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                  Container(height: 35, width: 1, color: cardBorder),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Actual Logged', style: TextStyle(color: textSub, fontSize: 11, fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(Icons.hourglass_bottom_rounded, size: 16, color: Color(0xFF10B981)),
-                          const SizedBox(width: 4),
-                          Text('${actHours}h', style: TextStyle(color: textTitle, fontSize: 16, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ],
+                  const SizedBox(height: 10),
+                  Text('Assigned By', style: TextStyle(color: textSub, fontSize: 11)),
+                  Text(
+                    assignedBy.isNotEmpty ? assignedBy : '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: textTitle, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
+                  const SizedBox(height: 8),
+                  Text('Reviewer(s)', style: TextStyle(color: textSub, fontSize: 11)),
+                  Text(
+                    reviewerNames.isNotEmpty ? reviewerNames : 'No reviewer selected',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: reviewerNames.isNotEmpty ? const Color(0xFF8B5CF6) : textSub,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (reviewedById != null) ...[
+                    const SizedBox(height: 6),
+                    Text('Approved by reviewer #$reviewedById', style: TextStyle(color: const Color(0xFF10B981), fontSize: 11)),
+                  ],
                 ],
               ),
             ),

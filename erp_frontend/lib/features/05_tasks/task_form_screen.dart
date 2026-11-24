@@ -59,12 +59,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   late TextEditingController _titleCtrl;
   late TextEditingController _descCtrl;
-  late TextEditingController _hoursCtrl;
   late TextEditingController _tagsCtrl;
   final List<TextEditingController> _subtaskCtrls = [];
 
   int? _selectedProjectId;
   final List<int> _selectedAssigneeIds = [];
+  final List<int> _selectedReviewerIds = [];
+  String _assignedByName = '';
+  String _currentUserName = '';
   int? _selectedDeptId;
   String _selectedPriority = 'MEDIUM';
   String _selectedStatus = 'TODO';
@@ -94,7 +96,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
     _titleCtrl = TextEditingController(text: t?['title'] ?? '');
     _descCtrl = TextEditingController(text: t?['description'] ?? '');
-    _hoursCtrl = TextEditingController(text: (t?['estimated_hours'] ?? 8.0).toString());
     _tagsCtrl = TextEditingController(text: t?['tags'] ?? '');
 
     _selectedProjectId = t != null
@@ -114,6 +115,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       if (_selectedAssigneeIds.isEmpty && t['assigned_to'] != null) {
         final id = int.tryParse(t['assigned_to'].toString());
         if (id != null) _selectedAssigneeIds.add(id);
+      }
+      if (t['reviewers'] is List) {
+        for (final r in t['reviewers']) {
+          final id = int.tryParse(r is Map ? (r['employee_id']?.toString() ?? '') : r?.toString() ?? '');
+          if (id != null && !_selectedReviewerIds.contains(id)) {
+            _selectedReviewerIds.add(id);
+          }
+        }
       }
     }
 
@@ -158,6 +167,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   Future<void> _initFormContext() async {
     try {
       final session = await SessionManager.getUserSession();
+      _currentUserName = (session['fullName']?.toString() ?? '').trim();
       final isSuper = session['role'] == 'Super Admin' || session['role_name'] == 'Super Admin';
       _isSuperAdmin = isSuper;
       final hasAssign = isSuper || await SessionManager.hasPermission('tasks_create_assign');
@@ -188,6 +198,26 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     await _fetchDepartments();
     await _fetchEmployees();
     await _loadProjectContext(_selectedProjectId, isInitial: true);
+    _refreshAssignedByName();
+  }
+
+  void _refreshAssignedByName() {
+    final t = widget.task;
+    final byId = int.tryParse((t?['assigned_by'] ?? '').toString());
+    String? name;
+    if (byId != null) {
+      for (final e in _allEmployees) {
+        if ((int.tryParse(e['employee_id']?.toString() ?? '') ?? 0) == byId) {
+          name = e['full_name']?.toString();
+          break;
+        }
+      }
+    }
+    name ??= t?['assigned_by_name']?.toString();
+    if ((name ?? '').trim().isEmpty && isEdit == false) {
+      name = _currentUserName;
+    }
+    _assignedByName = (name ?? '').trim();
   }
 
   Future<void> _fetchEmployees() async {
@@ -206,6 +236,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   priorityWorkers: _projectWorkers,
                 );
                 _ensureValidAssignees();
+                _refreshAssignedByName();
               });
             }
           }
@@ -381,7 +412,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
-    _hoursCtrl.dispose();
     _tagsCtrl.dispose();
     for (final c in _subtaskCtrls) {
       c.dispose();
@@ -469,7 +499,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final hours = double.tryParse(_hoursCtrl.text.trim()) ?? 8.0;
       final subtasks = _subtaskCtrls
           .map((c) => c.text.trim())
           .where((t) => t.isNotEmpty)
@@ -490,7 +519,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             'priority': _selectedPriority,
             'status': _selectedStatus,
             'due_date': dueDateStr,
-            'estimated_hours': hours,
+            'reviewers': _selectedReviewerIds,
           }),
         );
 
@@ -527,7 +556,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             'priority': _selectedPriority,
             'status': _selectedStatus,
             'due_date': dueDateStr,
-            'estimated_hours': hours,
+            'reviewers': _selectedReviewerIds,
             'is_private': _isPrivateTask ? 1 : 0,
             'subtasks': subtasks,
           }),
@@ -1048,7 +1077,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         // CARD 2: Assignee, Priority & Schedule
                         _buildCard(
                           title: 'Assignee, Priority & Schedule',
-                          subtitle: 'Task owner, priority rating, timeline dates and estimated hours',
+                          subtitle: 'Assigned by, task owner, priority, timeline and reviewers',
                           icon: Icons.tune_rounded,
                           isDark: isDark,
                           cardBg: cardBg,
@@ -1056,7 +1085,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           textTitle: textTitle,
                           textSub: textSub,
                           children: [
-                            // Row: Multi-Worker Assignee & Estimated Hours
+                            // Row: Multi-Worker Assignee & Assigned By
                             _buildResponsiveRow(
                               isMobile: isMobile,
                               first: Column(
@@ -1254,12 +1283,35 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                               second: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildLabel('Estimated Hours (Hrs)', isDark),
-                                  TextFormField(
-                                    controller: _hoursCtrl,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    style: TextStyle(color: textTitle, fontSize: 13.5),
-                                    decoration: _inputDecoration('8.0', Icons.access_time_rounded, isDark),
+                                  _buildLabel('Assigned By', isDark),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? const Color(0xFF0B132B) : const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 12,
+                                          backgroundColor: const Color(0xFF2563EB).withValues(alpha: 0.15),
+                                          child: const Icon(Icons.person_rounded, size: 14, color: Color(0xFF2563EB)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            _assignedByName.isNotEmpty
+                                                ? _assignedByName
+                                                : (isEdit ? 'Not recorded' : 'You'),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(color: textTitle, fontSize: 12.5, fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1274,9 +1326,29 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                               children: [
                                 _buildStatusChip('TODO', 'To Do', const Color(0xFF3B82F6)),
                                 _buildStatusChip('IN_PROGRESS', 'In Progress', const Color(0xFFF59E0B)),
+                                _buildStatusChip('REVIEW', 'For Review', const Color(0xFF8B5CF6)),
                                 _buildStatusChip('DONE', 'Done / Completed', const Color(0xFF10B981)),
                               ],
                             ),
+                            if (_selectedReviewerIds.isNotEmpty) ...[
+                              const SizedBox(height: 5),
+                              Row(
+                                children: [
+                                  const Icon(Icons.fact_check_rounded, size: 12, color: Color(0xFF8B5CF6)),
+                                  const SizedBox(width: 5),
+                                  Expanded(
+                                    child: Text(
+                                      'Completion needs approval from the selected reviewer(s)',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark ? Colors.purple[200] : Colors.purple[800],
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             if (isEdit && !_isAssignedToThisTask) ...[
                               const SizedBox(height: 5),
                               Row(
@@ -1292,6 +1364,128 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                     ),
                                   ),
                                 ],
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            _buildLabel('For Review / Go to (${_selectedReviewerIds.length})', isDark),
+                            Row(
+                              children: [
+                                if (_canAssignOthers && _availableWorkers.isNotEmpty)
+                                  PopupMenuButton<int>(
+                                    tooltip: 'Add Reviewer',
+                                    icon: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3)),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.fact_check_rounded, size: 14, color: Color(0xFF8B5CF6)),
+                                          SizedBox(width: 4),
+                                          Text('+ Add Reviewer', style: TextStyle(color: Color(0xFF8B5CF6), fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                    ),
+                                    onSelected: (empId) {
+                                      setState(() {
+                                        if (_selectedReviewerIds.contains(empId)) {
+                                          _selectedReviewerIds.remove(empId);
+                                        } else {
+                                          _selectedReviewerIds.add(empId);
+                                        }
+                                      });
+                                    },
+                                    itemBuilder: (context) {
+                                      return _availableWorkers.map<PopupMenuItem<int>>((e) {
+                                        final empId = int.tryParse(e['employee_id'].toString()) ?? 0;
+                                        final isSelected = _selectedReviewerIds.contains(empId);
+                                        return PopupMenuItem<int>(
+                                          value: empId,
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                                                size: 18,
+                                                color: isSelected ? const Color(0xFF8B5CF6) : Colors.grey,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  '${e['full_name']} (${e['emp_code'] ?? 'EMP'})',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }).toList();
+                                    },
+                                  ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _selectedReviewerIds.isEmpty
+                                        ? 'Optional — choose one or more people to approve this task'
+                                        : 'Task stays in review until they approve',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: textSub, fontSize: 11.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_selectedReviewerIds.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _selectedReviewerIds.map((empId) {
+                                  final emp = _availableWorkers.firstWhere(
+                                    (e) => (int.tryParse(e['employee_id'].toString()) ?? 0) == empId,
+                                    orElse: () => widget.employees.firstWhere(
+                                      (e) => (int.tryParse(e['employee_id'].toString()) ?? 0) == empId,
+                                      orElse: () => {'full_name': 'Reviewer #$empId', 'emp_code': 'EMP'},
+                                    ),
+                                  );
+                                  final name = (emp['full_name'] ?? 'Reviewer').toString();
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.4)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 10,
+                                          backgroundColor: const Color(0xFF8B5CF6),
+                                          child: Text(
+                                            name.isNotEmpty ? name[0].toUpperCase() : 'R',
+                                            style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '$name (${emp['emp_code'] ?? 'EMP'})',
+                                          style: TextStyle(color: textTitle, fontSize: 12, fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        InkWell(
+                                          onTap: () => setState(() => _selectedReviewerIds.remove(empId)),
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Icon(Icons.close_rounded, size: 14, color: textSub),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                             ],
                             const SizedBox(height: 16),

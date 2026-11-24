@@ -79,6 +79,19 @@ async function testConnection() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 2C. Auto-create task_reviewers (multi-reviewer approval support)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS task_reviewers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        employee_id INT NOT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_task_reviewer (task_id, employee_id),
+        FOREIGN KEY (task_id) REFERENCES task(task_id) ON DELETE CASCADE,
+        FOREIGN KEY (employee_id) REFERENCES EMPLOYEE(employee_id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // 3. Ensure EMPLOYEE columns exist
     const columns = [
       { name: 'employment_type', sql: "VARCHAR(50) DEFAULT 'Permanent'" },
@@ -104,6 +117,22 @@ async function testConnection() {
 
     try {
       await connection.query("ALTER TABLE task ADD COLUMN is_private TINYINT(1) DEFAULT 0");
+    } catch (_) {}
+
+    // Approval workflow metadata. Guarded so existing databases upgrade cleanly.
+    for (const column of [
+      { name: 'assigned_by', sql: 'INT NULL' },
+      { name: 'reviewed_by', sql: 'INT NULL' },
+      { name: 'reviewed_at', sql: 'DATETIME NULL' },
+    ]) {
+      try {
+        await connection.query(`ALTER TABLE task ADD COLUMN ${column.name} ${column.sql}`);
+      } catch (_) {}
+    }
+
+    // Older schemas used ENUM without REVIEW; VARCHAR keeps all legacy values.
+    try {
+      await connection.query("ALTER TABLE task MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'TODO'");
     } catch (_) {}
 
     console.log('✅ Master Database tables & columns verified!');

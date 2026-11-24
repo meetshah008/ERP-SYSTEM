@@ -40,11 +40,12 @@ void main() {
       final tasks = <dynamic>[
         {'status': 'TODO'},
         {'status': 'IN_PROGRESS'},
+        {'status': 'REVIEW'},
         {'status': 'DONE'},
         {'status': 'Completed'},
       ];
 
-      expect(countPendingTasks(tasks), 2);
+      expect(countPendingTasks(tasks), 3);
     });
 
     test('active projects count as pending, completed ones do not', () {

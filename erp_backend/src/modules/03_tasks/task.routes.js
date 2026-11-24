@@ -12,6 +12,10 @@ router.get('/:id', taskController.getTaskDetails);
 // 3. Task ka status badalna (PUT)
 router.put('/:id/status', taskController.updateTaskStatus);
 
+// 3B. Review approval flow (POST)
+router.post('/:id/approve', taskController.approveTask);
+router.post('/:id/reject-review', taskController.rejectTaskReview);
+
 // 4. Task Edit & Delete routes
 router.put('/:id', taskController.updateTask);
 router.delete('/:id', taskController.deleteTask);

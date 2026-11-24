@@ -1,6 +1,13 @@
 const db = require('../../config/db');
 const jwt = require('jsonwebtoken');
 const { resolveCompanyId, resolveRequesterInfo } = require('../../utils/tenant');
+const {
+  normalizeEmployeeIds,
+  normalizeStatus,
+  hasReviewers,
+  canAssigneeSetStatus,
+  canApproveTask,
+} = require('../../utils/task_workflow');
 
 async function resolveRequesterEmployee(req) {
   // 1. Direct req.user
@@ -81,10 +88,25 @@ const sendNotification = async ({ companyId = 1, title, message, type, reference
   }
 };
 
+async function fetchTaskReviewers(taskId) {
+  try {
+    const [rows] = await db.query(
+      `SELECT e.employee_id, e.full_name, e.emp_code, e.designation
+       FROM task_reviewers tr
+       JOIN employee e ON tr.employee_id = e.employee_id
+       WHERE tr.task_id = ?`,
+      [taskId]
+    );
+    return rows;
+  } catch (_) {
+    return [];
+  }
+}
+
 // 1. NAYA TASK ASSIGN KARNA (General ya Project Task - Supports Single or Multiple Assignees)
 exports.createTask = async (req, res) => {
   try {
-    const { assigned_to, assignees, title, description, priority, status, due_date, project_id, estimated_hours, subtasks, is_private } = req.body;
+    const { assigned_to, assignees, reviewers, title, description, priority, status, due_date, project_id, estimated_hours, subtasks, is_private } = req.body;
 
     // Handle multiple assignees or single assigned_to
     let assigneeList = [];
@@ -98,6 +120,14 @@ exports.createTask = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least 1 Assignee and Task Title are required!' });
     }
 
+    const reviewerList = normalizeEmployeeIds(reviewers);
+    // With reviewers configured, DONE is only reachable through an approval.
+    const requestedStatus = normalizeStatus(status, 'TODO');
+    const initialStatus = canAssigneeSetStatus(requestedStatus, reviewerList) ? requestedStatus : 'TODO';
+
+    const requester = await resolveRequesterInfo(req);
+    const assignedBy = requester.employeeId || null;
+
     const primaryAssignee = assigneeList[0];
     let effCompanyId = resolveCompanyId(req) || req.body.company_id;
     if (!effCompanyId && project_id) {
@@ -109,9 +139,9 @@ exports.createTask = async (req, res) => {
     effCompanyId = effCompanyId || 1;
 
     const [result] = await db.query(
-      `INSERT INTO task (company_id, assigned_to, project_id, title, description, priority, status, due_date, estimated_hours, is_private)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [effCompanyId, primaryAssignee, project_id || null, title, description || '', priority || 'MEDIUM', status || 'TODO', due_date || null, estimated_hours || 0, is_private ? 1 : 0]
+      `INSERT INTO task (company_id, assigned_to, assigned_by, project_id, title, description, priority, status, due_date, estimated_hours, is_private)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [effCompanyId, primaryAssignee, assignedBy, project_id || null, title, description || '', priority || 'MEDIUM', initialStatus, due_date || null, estimated_hours || 0, is_private ? 1 : 0]
     );
 
     const taskId = result.insertId;
@@ -142,6 +172,40 @@ exports.createTask = async (req, res) => {
         `INSERT IGNORE INTO task_assignees (task_id, employee_id) VALUES (?, ?)`,
         [taskId, empId]
       );
+    }
+
+    // Insert chosen reviewers and inform them that approval may be requested.
+    if (reviewerList.length > 0) {
+      try {
+        for (const empId of reviewerList) {
+          await db.query(
+            `INSERT IGNORE INTO task_reviewers (task_id, employee_id) VALUES (?, ?)`,
+            [taskId, empId]
+          );
+        }
+      } catch (err) {
+        console.warn('Could not save task reviewers:', err.message);
+      }
+      try {
+        const [reviewerUsers] = await db.query(
+          `SELECT employee_id, user_id FROM EMPLOYEE WHERE employee_id IN (?)`,
+          [reviewerList]
+        );
+        for (const ru of reviewerUsers) {
+          if (ru.user_id) {
+            await sendNotification({
+              companyId: effCompanyId,
+              title: 'Task Review Assigned 🔎',
+              message: `You are a reviewer for task "${title}". You can approve it once it is sent for review.`,
+              type: 'TASK_REVIEW_ASSIGNED',
+              referenceId: taskId,
+              targetUserId: ru.user_id
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Reviewer notification failed:', err.message);
+      }
     }
 
     if (Array.isArray(subtasks) && subtasks.length > 0) {
@@ -284,6 +348,7 @@ exports.getTasks = async (req, res) => {
       if (assignees.length > 0) {
         task.assigned_worker = assignees.map(a => a.full_name).join(', ');
       }
+      task.reviewers = await fetchTaskReviewers(task.task_id);
     }
 
     return res.status(200).json({ success: true, data: tasks });
@@ -300,9 +365,11 @@ exports.getTaskDetails = async (req, res) => {
     const [tasks] = await db.query(
       `SELECT t.*,
               e.employee_id, e.full_name as assigned_worker, e.emp_code, e.designation as worker_designation,
+              ab.full_name as assigned_by_name,
               p.project_name, p.project_code, p.status as project_status
        FROM task t
        LEFT JOIN employee e ON t.assigned_to = e.employee_id
+       LEFT JOIN employee ab ON t.assigned_by = ab.employee_id
        LEFT JOIN project p ON t.project_id = p.project_id
        WHERE t.task_id = ?`,
       [id]
@@ -334,6 +401,9 @@ exports.getTaskDetails = async (req, res) => {
       task.assigned_worker = assignees.map(a => a.full_name).join(', ');
     }
 
+    // Multi-Reviewers
+    task.reviewers = await fetchTaskReviewers(id);
+
     // Timesheets (hours logged for this specific task)
     let timesheets = [];
     try {
@@ -355,19 +425,25 @@ exports.getTaskDetails = async (req, res) => {
   }
 };
 
-// 3. TASK KA STATUS BADALNA (TODO -> IN_PROGRESS -> DONE)
-// STRICT REQUIREMENT: Only the assigned employee(s) can update task status!
+// 3. TASK STATUS: TODO -> IN_PROGRESS -> REVIEW -> DONE
+// Assignees can move a task to REVIEW; a chosen reviewer must approve to reach DONE.
 exports.updateTaskStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'TODO', 'IN_PROGRESS', 'DONE'
+    const targetStatus = normalizeStatus(req.body?.status, null);
 
-    if (!status) {
-      return res.status(400).json({ success: false, message: 'Status is required!' });
+    if (!targetStatus) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status! Allowed: TODO, IN_PROGRESS, REVIEW, DONE.'
+      });
     }
 
     // A. Fetch task details
-    const [tasks] = await db.query('SELECT task_id, assigned_to, status FROM task WHERE task_id = ?', [id]);
+    const [tasks] = await db.query(
+      'SELECT task_id, assigned_to, company_id, title, status FROM task WHERE task_id = ?',
+      [id]
+    );
     if (tasks.length === 0) {
       return res.status(404).json({ success: false, message: 'Task not found!' });
     }
@@ -392,9 +468,50 @@ exports.updateTaskStatus = async (req, res) => {
       });
     }
 
-    await db.query('UPDATE task SET status = ? WHERE task_id = ?', [status, id]);
+    // E. Reviewers gate completion. Admins must use the approval endpoint too.
+    const reviewers = await fetchTaskReviewers(id);
+    const reviewerIds = reviewers.map(r => r.employee_id);
+    if (!canAssigneeSetStatus(targetStatus, reviewerIds)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Review approval required: this task can only be completed after a chosen reviewer approves it.'
+      });
+    }
 
-    return res.status(200).json({ success: true, message: `Task status changed to ${status}!` });
+    if (targetStatus === 'DONE') {
+      await db.query('UPDATE task SET status = ?, reviewed_at = NULL WHERE task_id = ?', [targetStatus, id]);
+    } else {
+      await db.query(
+        'UPDATE task SET status = ?, reviewed_by = NULL, reviewed_at = NULL WHERE task_id = ?',
+        [targetStatus, id]
+      );
+    }
+
+    // F. Notify reviewers when the task is sent for review.
+    if (targetStatus === 'REVIEW' && reviewerIds.length > 0) {
+      try {
+        const [reviewerUsers] = await db.query(
+          `SELECT employee_id, user_id FROM EMPLOYEE WHERE employee_id IN (?)`,
+          [reviewerIds]
+        );
+        for (const ru of reviewerUsers) {
+          if (ru.user_id) {
+            await sendNotification({
+              companyId: currentTask.company_id || 1,
+              title: 'Task Sent for Review 🔎',
+              message: `Task "${currentTask.title}" is waiting for your approval.`,
+              type: 'TASK_REVIEW_REQUEST',
+              referenceId: id,
+              targetUserId: ru.user_id
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Review request notification failed:', err.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: `Task status changed to ${targetStatus}!` });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -404,7 +521,7 @@ exports.updateTaskStatus = async (req, res) => {
 exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const { assigned_to, assignees, project_id, title, description, priority, status, due_date, estimated_hours } = req.body;
+    const { assigned_to, assignees, reviewers, project_id, title, description, priority, status, due_date, estimated_hours } = req.body;
 
     // Fetch existing task
     const [existingTasks] = await db.query('SELECT task_id, assigned_to, status FROM task WHERE task_id = ?', [id]);
@@ -444,11 +561,22 @@ exports.updateTask = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least 1 Assignee and Title are required!' });
     }
 
-    // Status change: only assigned employee or Super Admin can change status
+    // Effective reviewers (edit form always sends the full list).
+    const reviewerList = reviewers === undefined
+      ? (await fetchTaskReviewers(id)).map(r => r.employee_id)
+      : normalizeEmployeeIds(reviewers);
+
+    // Status change: already verified requester is assigned or admin.
     let targetStatus = existing.status;
-    if (status && status !== existing.status) {
-      // Already verified requester is assigned above, so just allow
-      targetStatus = status;
+    if (status) {
+      const requestedStatus = normalizeStatus(status, existing.status);
+      if (!canAssigneeSetStatus(requestedStatus, reviewerList)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Review approval required: this task can only be completed after a chosen reviewer approves it.'
+        });
+      }
+      targetStatus = requestedStatus;
     }
 
     const primaryAssignee = assigneeList[0];
@@ -483,7 +611,123 @@ exports.updateTask = async (req, res) => {
       await db.query('INSERT IGNORE INTO task_assignees (task_id, employee_id) VALUES (?, ?)', [id, empId]);
     }
 
+    // Sync task_reviewers table when the form provides the list
+    if (reviewers !== undefined) {
+      try {
+        await db.query('DELETE FROM task_reviewers WHERE task_id = ?', [id]);
+        for (const empId of reviewerList) {
+          await db.query('INSERT IGNORE INTO task_reviewers (task_id, employee_id) VALUES (?, ?)', [id, empId]);
+        }
+      } catch (err) {
+        console.warn('Could not sync task reviewers:', err.message);
+      }
+    }
+
     return res.status(200).json({ success: true, message: 'Task updated successfully!' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 4B. REVIEW APPROVAL - only a chosen reviewer (or admin) may complete a REVIEW task.
+exports.approveTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [tasks] = await db.query(
+      'SELECT task_id, assigned_to, company_id, title, status FROM task WHERE task_id = ?',
+      [id]
+    );
+    if (tasks.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found!' });
+    }
+    const task = tasks[0];
+    const reviewers = await fetchTaskReviewers(id);
+    const requester = await resolveRequesterInfo(req);
+
+    if (!canApproveTask({
+      isSuperAdmin: requester.isSuperAdmin,
+      employeeId: requester.employeeId,
+      reviewerIds: reviewers.map(r => r.employee_id),
+      currentStatus: task.status,
+    })) {
+      const status = normalizeStatus(task.status, '');
+      return res.status(403).json({
+        success: false,
+        message: status === 'REVIEW'
+          ? 'Access Denied: Only a chosen reviewer or admin can approve this task!'
+          : 'This task is not waiting for review!'
+      });
+    }
+
+    await db.query(
+      `UPDATE task SET status = 'DONE', reviewed_by = ?, reviewed_at = NOW() WHERE task_id = ?`,
+      [requester.employeeId || requester.userId || null, id]
+    );
+
+    // Inform assignees that their work was approved.
+    try {
+      const assigneeIds = normalizeEmployeeIds([task.assigned_to]);
+      if (assigneeIds.length > 0) {
+        const [empUsers] = await db.query(
+          `SELECT employee_id, user_id FROM EMPLOYEE WHERE employee_id IN (?)`,
+          [assigneeIds]
+        );
+        for (const eu of empUsers) {
+          if (eu.user_id) {
+            await sendNotification({
+              companyId: task.company_id || 1,
+              title: 'Task Approved ✅',
+              message: `Task "${task.title}" was approved and marked complete.`,
+              type: 'TASK_APPROVED',
+              referenceId: task.task_id,
+              targetUserId: eu.user_id
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Task approval notification failed:', err.message);
+    }
+
+    return res.status(200).json({ success: true, message: 'Task approved and marked complete!' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 4C. RETURN A TASK FOR REVISION (reviewer sends it back to the assignee)
+exports.rejectTaskReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [tasks] = await db.query(
+      'SELECT task_id, assigned_to, company_id, title, status FROM task WHERE task_id = ?',
+      [id]
+    );
+    if (tasks.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found!' });
+    }
+    const task = tasks[0];
+    const reviewers = await fetchTaskReviewers(id);
+    const requester = await resolveRequesterInfo(req);
+
+    if (!canApproveTask({
+      isSuperAdmin: requester.isSuperAdmin,
+      employeeId: requester.employeeId,
+      reviewerIds: reviewers.map(r => r.employee_id),
+      currentStatus: task.status,
+    })) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only a chosen reviewer or admin can return this task for revision!'
+      });
+    }
+
+    await db.query(
+      `UPDATE task SET status = 'IN_PROGRESS', reviewed_by = NULL, reviewed_at = NULL WHERE task_id = ?`,
+      [id]
+    );
+
+    return res.status(200).json({ success: true, message: 'Task returned for revision.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -496,6 +740,10 @@ exports.deleteTask = async (req, res) => {
 
     // 1. Task ke checklist subtasks delete kiye
     await db.query('DELETE FROM task_subtask WHERE task_id = ?', [id]);
+    // Reviewer rows (older tables may not have the FK cascade)
+    try {
+      await db.query('DELETE FROM task_reviewers WHERE task_id = ?', [id]);
+    } catch (_) {}
     // 2. Task ki timesheets unlink ki
     await db.query('DELETE FROM project_timesheet WHERE task_id = ?', [id]);
     // 3. Main task delete kiya

@@ -13,6 +13,7 @@ import 'project_edit_screen.dart';
 import 'task_form_screen.dart';
 import '../../core/network/session_manager.dart';
 import '../../core/theme/enterprise_theme.dart';
+import '../../core/utils/task_status_flow.dart';
 
 /// Desktop-only Projects / General Tasks switcher visibility.
 ///
@@ -409,9 +410,11 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       (task['status'] ?? 'TODO').toString().toUpperCase();
 
   String _taskStatusLabel(String status) {
-    switch (status) {
+    switch (normalizeTaskStatus(status)) {
       case 'IN_PROGRESS':
         return 'In Progress';
+      case 'REVIEW':
+        return 'For Review';
       case 'DONE':
         return 'Completed';
       default:
@@ -2031,6 +2034,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
 
     final todo = filtered.where((t) => _taskStatus(t) == 'TODO').toList();
     final inProgress = filtered.where((t) => _taskStatus(t) == 'IN_PROGRESS').toList();
+    final review = filtered.where((t) => _taskStatus(t) == 'REVIEW').toList();
     final done = filtered.where((t) => _taskStatus(t) == 'DONE').toList();
 
     return Column(
@@ -2066,15 +2070,21 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                 // 📱 MOBILE: Direct tasks list - no outer column box, no duplicate header, natural page scrolling!
                 final activeList = _genMobileColumnTab == 'TODO'
                     ? todo
-                    : (_genMobileColumnTab == 'IN_PROGRESS' ? inProgress : done);
+                    : (_genMobileColumnTab == 'IN_PROGRESS'
+                        ? inProgress
+                        : (_genMobileColumnTab == 'REVIEW' ? review : done));
                 final activeColor = _genMobileColumnTab == 'TODO'
                     ? const Color(0xFF3B82F6)
                     : (_genMobileColumnTab == 'IN_PROGRESS'
                         ? const Color(0xFFF59E0B)
-                        : const Color(0xFF10B981));
+                        : (_genMobileColumnTab == 'REVIEW'
+                            ? const Color(0xFF8B5CF6)
+                            : const Color(0xFF10B981)));
                 final activeTitle = _genMobileColumnTab == 'TODO'
                     ? 'To Do'
-                    : (_genMobileColumnTab == 'IN_PROGRESS' ? 'In Progress' : 'Completed');
+                    : (_genMobileColumnTab == 'IN_PROGRESS'
+                        ? 'In Progress'
+                        : (_genMobileColumnTab == 'REVIEW' ? 'For Review' : 'Completed'));
 
                 if (activeList.isEmpty) {
                   return _buildKanbanColumnEmptyState(activeTitle, isDark, cardBorder, textTitle, textSub);
@@ -2103,6 +2113,8 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   Expanded(child: _buildKanbanColumn('To Do', Icons.radio_button_unchecked_rounded, todo, const Color(0xFF3B82F6), cardBg, cardBorder, textTitle, textSub)),
                   const SizedBox(width: 14),
                   Expanded(child: _buildKanbanColumn('In Progress', Icons.timelapse_rounded, inProgress, const Color(0xFFF59E0B), cardBg, cardBorder, textTitle, textSub)),
+                  const SizedBox(width: 14),
+                  Expanded(child: _buildKanbanColumn('For Review', Icons.fact_check_rounded, review, const Color(0xFF8B5CF6), cardBg, cardBorder, textTitle, textSub)),
                   const SizedBox(width: 14),
                   Expanded(child: _buildKanbanColumn('Completed', Icons.task_alt_rounded, done, const Color(0xFF10B981), cardBg, cardBorder, textTitle, textSub)),
                 ],
@@ -2136,6 +2148,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         if (isNarrow) {
           final todoCount = tasks.where((t) => _taskStatus(t) == 'TODO').length;
           final inProgCount = tasks.where((t) => _taskStatus(t) == 'IN_PROGRESS').length;
+          final reviewCount = tasks.where((t) => _taskStatus(t) == 'REVIEW').length;
           final doneCount = tasks.where((t) => _taskStatus(t) == 'DONE').length;
 
           return Container(
@@ -2233,6 +2246,10 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                     const SizedBox(width: 18),
                     _buildMobileKanbanTabItem('In progress', inProgCount, _genMobileColumnTab == 'IN_PROGRESS', () {
                       setState(() => _genMobileColumnTab = 'IN_PROGRESS');
+                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                    const SizedBox(width: 18),
+                    _buildMobileKanbanTabItem('Review', reviewCount, _genMobileColumnTab == 'REVIEW', () {
+                      setState(() => _genMobileColumnTab = 'REVIEW');
                     }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
                     const SizedBox(width: 18),
                     _buildMobileKanbanTabItem('Done', doneCount, _genMobileColumnTab == 'DONE', () {
@@ -3115,11 +3132,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
         final dueChip = _buildTaskDueDateChip(task, isDone, textSub);
         final taskCardBg = isDark ? const Color(0xFF0F172A) : Colors.white;
 
-        final nextStatus = status == 'TODO'
-            ? 'IN_PROGRESS'
-            : status == 'IN_PROGRESS'
-            ? 'DONE'
-            : 'TODO';
+        final nextStatus = nextTaskStatus(task);
 
         return _HoverCardItem(
           cardBg: isDone ? taskCardBg.withValues(alpha: 0.8) : taskCardBg,
@@ -3863,6 +3876,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
       if (_selectedStatusFilter == 'ALL') return true;
       if (_selectedStatusFilter == 'TODO') return status == 'TODO';
       if (_selectedStatusFilter == 'IN_PROGRESS') return status == 'IN_PROGRESS';
+      if (_selectedStatusFilter == 'REVIEW') return status == 'REVIEW';
       if (_selectedStatusFilter == 'DONE') return status == 'DONE';
 
       return true;
@@ -3871,6 +3885,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
     final totalCount = allTasks.length;
     final todoCount = allTasks.where((t) => (t['status'] ?? 'TODO') == 'TODO').length;
     final inProgressCount = allTasks.where((t) => t['status'] == 'IN_PROGRESS').length;
+    final reviewCount = allTasks.where((t) => t['status'] == 'REVIEW').length;
     final doneCount = allTasks.where((t) => t['status'] == 'DONE').length;
 
     return Column(
@@ -3903,6 +3918,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   _buildStatusFilterChip('ALL', 'All ($totalCount)'),
                   _buildStatusFilterChip('TODO', 'To Do ($todoCount)'),
                   _buildStatusFilterChip('IN_PROGRESS', 'In Progress ($inProgressCount)'),
+                  _buildStatusFilterChip('REVIEW', 'Review ($reviewCount)'),
                   _buildStatusFilterChip('DONE', 'Done ($doneCount)'),
                 ],
               ),
@@ -3939,6 +3955,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                         _buildStatusFilterChip('ALL', 'All ($totalCount)'),
                         _buildStatusFilterChip('TODO', 'To Do ($todoCount)'),
                         _buildStatusFilterChip('IN_PROGRESS', 'In Progress ($inProgressCount)'),
+                        _buildStatusFilterChip('REVIEW', 'Review ($reviewCount)'),
                         _buildStatusFilterChip('DONE', 'Done ($doneCount)'),
                       ],
                     ),
@@ -3980,9 +3997,7 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                   canEdit: _canEditTask && (_currentUserRole == 'Super Admin' || _currentUserRole == 'admin' || _isAssignedToTask(t)),
                   canDelete: _canDeleteTask,
                   onToggleStatus: () {
-                    final isDone = t['status'] == 'DONE';
-                    final next = isDone ? 'TODO' : 'DONE';
-                    _updateTaskStatus(t['task_id'], next, t);
+                    _updateTaskStatus(t['task_id'], nextTaskStatus(t), t);
                   },
                   onOpenDetails: () => _openTaskDetailsDialog(t),
                   onEdit: () => _openTaskDetailsDialog(t),
@@ -4602,21 +4617,17 @@ class _GeneralTaskKanbanCardState extends State<_GeneralTaskKanbanCard> {
         .length;
     final dueChip = widget.buildDueDateChip(task, isDone, widget.textSub);
 
-    final nextStatus = status == 'TODO'
-        ? 'IN_PROGRESS'
-        : status == 'IN_PROGRESS'
-            ? 'DONE'
-            : 'TODO';
-    final nextLabel = status == 'TODO'
+    final nextStatus = nextTaskStatus(task);
+    final nextLabel = nextStatus == 'IN_PROGRESS'
         ? 'Start'
-        : status == 'IN_PROGRESS'
-            ? 'Complete'
-            : 'Reopen';
-    final nextIcon = status == 'TODO'
+        : nextStatus == 'REVIEW'
+            ? 'Review'
+            : (nextStatus == 'DONE' ? 'Complete' : 'Reopen');
+    final nextIcon = nextStatus == 'IN_PROGRESS'
         ? Icons.play_arrow_rounded
-        : status == 'IN_PROGRESS'
-            ? Icons.check_rounded
-            : Icons.replay_rounded;
+        : nextStatus == 'REVIEW'
+            ? Icons.fact_check_rounded
+            : (nextStatus == 'DONE' ? Icons.check_rounded : Icons.replay_rounded);
 
     final isMobile = MediaQuery.of(context).size.width < 820;
     final mobileTextTitle = widget.isDark ? Colors.white : const Color(0xFF0F172A);
@@ -5496,9 +5507,7 @@ class _ProjectWorkspaceTaskCardState extends State<_ProjectWorkspaceTaskCard> {
                     borderRadius: BorderRadius.circular(6),
                     onTap: widget.isAssignee
                         ? () {
-                            final current = t['status'] ?? 'TODO';
-                            final next = current == 'TODO' ? 'IN_PROGRESS' : (current == 'IN_PROGRESS' ? 'DONE' : 'TODO');
-                            widget.onUpdateStatus(t['task_id'], next);
+                            widget.onUpdateStatus(t['task_id'], nextTaskStatus(t));
                           }
                         : null,
                     child: Container(

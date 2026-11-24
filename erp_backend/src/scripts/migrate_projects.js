@@ -66,6 +66,36 @@ async function migrateProjects() {
       console.log('✅ 3c. Added actual_hours to task');
     }
 
+    for (const [colName, definition] of [
+      ['assigned_by', 'INT NULL'],
+      ['reviewed_by', 'INT NULL'],
+      ['reviewed_at', 'DATETIME NULL'],
+    ]) {
+      if (!colNames.includes(colName)) {
+        await db.query(`ALTER TABLE task ADD COLUMN ${colName} ${definition}`);
+        console.log(`✅ 3d. Added ${colName} to task`);
+      }
+    }
+
+    try {
+      await db.query(`ALTER TABLE task MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'TODO'`);
+      console.log('✅ 3e. Task status supports REVIEW');
+    } catch (_) {}
+
+    // 3F. REVIEWERS TABLE (approval workflow)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS task_reviewers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        employee_id INT NOT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_task_reviewer (task_id, employee_id),
+        FOREIGN KEY (task_id) REFERENCES task(task_id) ON DELETE CASCADE,
+        FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    console.log('✅ 3f. task_reviewers table ready');
+
     // 4. TASK_SUBTASK TABLE (Checklist inside tasks)
     await db.query(`
       CREATE TABLE IF NOT EXISTS task_subtask (

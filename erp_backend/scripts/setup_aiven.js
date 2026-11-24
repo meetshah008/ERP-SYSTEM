@@ -72,7 +72,10 @@ async function initAiven() {
         assigned_to INT NULL,
         project_id INT NULL,
         priority ENUM('Low', 'Medium', 'High', 'Urgent') DEFAULT 'Medium',
-        status ENUM('Pending', 'In Progress', 'Completed', 'On Hold') DEFAULT 'Pending',
+        status VARCHAR(20) NOT NULL DEFAULT 'TODO',
+        assigned_by INT NULL,
+        reviewed_by INT NULL,
+        reviewed_at DATETIME NULL,
         due_date DATE NULL,
         estimated_hours DECIMAL(6,2) DEFAULT 0.00,
         actual_hours DECIMAL(6,2) DEFAULT 0.00,
@@ -99,6 +102,16 @@ async function initAiven() {
         employee_id INT NOT NULL,
         assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_task_emp (task_id, employee_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS task_reviewers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        employee_id INT NOT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_task_reviewer (task_id, employee_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 

@@ -30,6 +30,8 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
       tasks_edit: true,
       tasks_delete: true,
       tasks_log_timesheet: true,
+      tasks_review: true,
+      tasks_approve: true,
       inventory_view_stock: true,
       inventory_manage_material: true,
       manufacturing_view_bom: true,
@@ -84,6 +86,8 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
       tasks_create_assign: isProjects,
       tasks_edit: isProjects,
       tasks_delete: false,          // Super Admin only
+      tasks_review: isProjects,
+      tasks_approve: isProjects,
 
       // Inventory Module:
       inventory_view_stock: isInventory || isManufacturing,
@@ -123,6 +127,8 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
     tasks_edit: false,
     tasks_delete: false,
     tasks_log_timesheet: true,            // Log Work Timesheets
+    tasks_review: false,                  // Only chosen reviewers / admins approve
+    tasks_approve: false,
     inventory_view_stock: false,
     inventory_manage_material: false,
     manufacturing_view_bom: false,
