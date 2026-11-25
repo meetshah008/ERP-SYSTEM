@@ -143,6 +143,111 @@ async function testConnection() {
       await connection.query("CREATE OR REPLACE VIEW TASK AS SELECT * FROM task");
     } catch (_) {}
 
+                // 2D. Auto-create attendance_settings (per company configurable rules)
+                try {
+                  await connection.query(`
+                    CREATE TABLE IF NOT EXISTS attendance_settings (
+                      setting_id INT AUTO_INCREMENT PRIMARY KEY,
+                      company_id INT NOT NULL UNIQUE,
+                      shift_start VARCHAR(10) NOT NULL DEFAULT '09:00',
+                      shift_end VARCHAR(10) NOT NULL DEFAULT '18:00',
+                      grace_minutes INT NOT NULL DEFAULT 30,
+                      no_punch_default_status VARCHAR(20) NOT NULL DEFAULT 'Absent',
+                      enable_late_warning_quota TINYINT(1) NOT NULL DEFAULT 1,
+                      late_warning_limit INT NOT NULL DEFAULT 3,
+                      late_penalty_action VARCHAR(20) NOT NULL DEFAULT 'Half-Day',
+                      full_day_minutes INT NOT NULL DEFAULT 480,
+                      half_day_minutes INT NOT NULL DEFAULT 240,
+                      missing_out_punch_status VARCHAR(20) NOT NULL DEFAULT 'Missing',
+                      enable_early_going_rule TINYINT(1) NOT NULL DEFAULT 1,
+                      early_going_grace_minutes INT NOT NULL DEFAULT 15,
+                      early_going_action VARCHAR(20) NOT NULL DEFAULT 'Half-Day',
+                      enable_auto_overtime TINYINT(1) NOT NULL DEFAULT 1,
+                      overtime_buffer_minutes INT NOT NULL DEFAULT 30,
+                      overtime_rate_multiplier DECIMAL(4,2) NOT NULL DEFAULT 1.50,
+                      overtime_fixed_hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                      enable_leave_integration TINYINT(1) NOT NULL DEFAULT 1,
+                      auto_sync_payroll_deduction TINYINT(1) NOT NULL DEFAULT 1,
+                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                  `);
+                  for (const col of [
+                    { name: 'no_punch_default_status', sql: "VARCHAR(20) NOT NULL DEFAULT 'Absent'" },
+                    { name: 'late_penalty_action', sql: "VARCHAR(20) NOT NULL DEFAULT 'Half-Day'" },
+                    { name: 'full_day_minutes', sql: 'INT NOT NULL DEFAULT 480' },
+                    { name: 'enable_early_going_rule', sql: 'TINYINT(1) NOT NULL DEFAULT 1' },
+                    { name: 'early_going_grace_minutes', sql: 'INT NOT NULL DEFAULT 15' },
+                    { name: 'early_going_action', sql: "VARCHAR(20) NOT NULL DEFAULT 'Half-Day'" },
+                    { name: 'overtime_rate_multiplier', sql: 'DECIMAL(4,2) NOT NULL DEFAULT 1.50' },
+                    { name: 'overtime_fixed_hourly_rate', sql: 'DECIMAL(10,2) NOT NULL DEFAULT 0.00' },
+                    { name: 'enable_leave_integration', sql: 'TINYINT(1) NOT NULL DEFAULT 1' },
+                    { name: 'auto_sync_payroll_deduction', sql: 'TINYINT(1) NOT NULL DEFAULT 1' },
+                  ]) {
+                    try {
+                      await connection.query(`ALTER TABLE attendance_settings ADD COLUMN ${col.name} ${col.sql}`);
+                    } catch (_) {}
+                  }
+                  await connection.query("CREATE OR REPLACE VIEW ATTENDANCE_SETTINGS AS SELECT * FROM attendance_settings");
+                } catch (_) {}
+
+
+                    // 2E. Attendance Master Tables (Status, Shift, Holiday, Weekly Off, Leave Type, Device)
+                    const masterDdls = [
+                      `CREATE TABLE IF NOT EXISTS att_master_status (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NOT NULL,
+                        code VARCHAR(10) NOT NULL,
+                        name VARCHAR(60) NOT NULL,
+                        is_paid TINYINT(1) NOT NULL DEFAULT 1,
+                        color_hex VARCHAR(16) NOT NULL DEFAULT '#059669'
+                      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+                      `CREATE TABLE IF NOT EXISTS att_master_shift (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NOT NULL,
+                        shift_name VARCHAR(80) NOT NULL,
+                        start_time VARCHAR(10) NOT NULL DEFAULT '09:00',
+                        end_time VARCHAR(10) NOT NULL DEFAULT '18:00',
+                        break_minutes INT NOT NULL DEFAULT 60
+                      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+                      `CREATE TABLE IF NOT EXISTS att_master_holiday (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NOT NULL,
+                        holiday_name VARCHAR(100) NOT NULL,
+                        holiday_date DATE NOT NULL,
+                        holiday_type VARCHAR(30) NOT NULL DEFAULT 'Public Holiday'
+                      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+                      `CREATE TABLE IF NOT EXISTS att_master_weekly_off (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NOT NULL,
+                        rule_name VARCHAR(80) NOT NULL,
+                        off_days VARCHAR(100) NOT NULL DEFAULT 'Sunday',
+                        saturday_rule VARCHAR(50) NOT NULL DEFAULT 'All Working'
+                      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+                      `CREATE TABLE IF NOT EXISTS att_master_leave_type (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NOT NULL,
+                        leave_code VARCHAR(12) NOT NULL,
+                        leave_name VARCHAR(80) NOT NULL,
+                        annual_quota INT NOT NULL DEFAULT 12,
+                        is_paid TINYINT(1) NOT NULL DEFAULT 1
+                      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+                      `CREATE TABLE IF NOT EXISTS att_master_device (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NOT NULL,
+                        device_name VARCHAR(80) NOT NULL,
+                        device_code VARCHAR(40) NOT NULL,
+                        device_type VARCHAR(30) NOT NULL DEFAULT 'Biometric',
+                        ip_address VARCHAR(50) NULL,
+                        location VARCHAR(80) NULL,
+                        status VARCHAR(20) NOT NULL DEFAULT 'Active'
+                      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+                    ];
+                    for (const ddl of masterDdls) {
+                      try {
+                        await connection.query(ddl);
+                      } catch (_) {}
+                    }
+
     console.log('✅ Master Database tables & columns verified!');
     connection.release();
   } catch (error) {
@@ -150,6 +255,7 @@ async function testConnection() {
     console.log('💡 Note: Ensure MySQL Server is running and .env has the right username/password.');
   }
 }
+
 
 testConnection();
 

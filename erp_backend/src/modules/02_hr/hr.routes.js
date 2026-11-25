@@ -16,6 +16,17 @@ router.post('/preview-attendance', upload.single('file'), hrController.previewBi
 router.get('/attendance', hrController.getAttendanceRecords);
 router.put('/attendance/:id', hrController.updateAttendanceRecord);
 
+// Attendance Settings & Auto-Recalculation Routes
+router.get('/attendance-settings', hrController.getAttendanceSettings);
+router.post('/attendance-settings', hrController.saveAttendanceSettings);
+
+// Attendance Master Routes (Holiday Master + Future Masters)
+router.get('/attendance-master', hrController.getAttendanceMasters);
+router.post('/attendance-master/holiday/bulk', hrController.bulkAddHolidays);
+router.post('/attendance-master/holiday/import', upload.single('file'), hrController.importHolidaysExcel);
+router.post('/attendance-master/:type', hrController.addAttendanceMasterItem);
+router.delete('/attendance-master/:type/:id', hrController.deleteAttendanceMasterItem);
+
 // Saare employees ki list mangwane ka route (GET)
 router.get('/employees', hrController.getEmployees);
 

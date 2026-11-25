@@ -795,22 +795,43 @@ exports.uploadBiometricSheet = async (req, res) => {
 
       const employee = empRows[0];
       const employeeId = employee.employee_id;
+      const attSettings = await getOrCreateAttendanceSettings(companyId);
 
-      // Prefer the sheet's own status; otherwise derive it from punches.
+      // Prefer the sheet's own status; otherwise derive it from rules & leaves.
       let status = normaliseSheetStatus(getNormalizedValue(rawRow, ['status']));
       if (!status) {
-        status = 'Present';
-        if (!inTime && !outTime && workMinutes === 0) {
-          status = 'Absent';
-        } else if (lateIn > 0) {
-          status = 'Late';
-        } else if (workMinutes > 0 && workMinutes < 240) {
-          status = 'Half-Day';
-        } else if (inTime) {
-          const timeParts = inTime.split(':');
-          const inHour = parseInt(timeParts[0] || '9', 10);
-          const inMinute = parseInt(timeParts[1] || '0', 10);
-          if (inHour > 9 || (inHour === 9 && inMinute > 30)) status = 'Late';
+        let isApprovedLeave = false;
+        if (Number(attSettings.enable_leave_integration ?? 1) === 1) {
+          try {
+            const [leaveRows] = await db.query(
+              `SELECT leave_id FROM LEAVE_REQUEST
+               WHERE employee_id = ? AND status = 'APPROVED' AND ? BETWEEN start_date AND end_date LIMIT 1`,
+              [employeeId, cleanDate]
+            );
+            if (leaveRows.length > 0) isApprovedLeave = true;
+          } catch (_) {}
+        }
+
+        const monthPrefix = cleanDate.slice(0, 7); // 'YYYY-MM'
+        const [lateRows] = await db.query(
+          `SELECT COUNT(*) AS cnt FROM ATTENDANCE
+           WHERE employee_id = ? AND DATE_FORMAT(work_date, '%Y-%m') = ? AND status = 'Late' AND work_date != ?`,
+          [employeeId, monthPrefix, cleanDate]
+        );
+        const priorLateCount = Number(lateRows[0]?.cnt || 0);
+
+        const computed = computeStatusFromRules({
+          inTime,
+          outTime,
+          workMinutes,
+          lateIn,
+          settings: attSettings,
+          priorLateCountThisMonth: priorLateCount,
+          isApprovedLeave,
+        });
+        status = computed.status;
+        if (overtimeHours === 0 && computed.overtimeHours > 0) {
+          overtimeHours = computed.overtimeHours;
         }
       }
 
@@ -2701,5 +2722,569 @@ exports.getAttendanceImports = async (req, res) => {
   } catch (error) {
     console.error('Get Attendance Imports Error:', error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+// ============================================================================
+// ATTENDANCE SETTINGS & AUTO-RECALCULATION ENGINE
+// ============================================================================
+async function getOrCreateAttendanceSettings(companyId) {
+  const cid = companyId || 1;
+  const [rows] = await db.query('SELECT * FROM attendance_settings WHERE company_id = ? LIMIT 1', [cid]);
+  if (rows.length > 0) return rows[0];
+  await db.query('INSERT IGNORE INTO attendance_settings (company_id) VALUES (?)', [cid]);
+  const [fresh] = await db.query('SELECT * FROM attendance_settings WHERE company_id = ? LIMIT 1', [cid]);
+  return fresh[0] || {
+    company_id: cid,
+    shift_start: '09:00',
+    shift_end: '18:00',
+    grace_minutes: 30,
+    no_punch_default_status: 'Absent',
+    enable_late_warning_quota: 1,
+    late_warning_limit: 3,
+    late_penalty_action: 'Half-Day',
+    full_day_minutes: 480,
+    half_day_minutes: 240,
+    missing_out_punch_status: 'Missing',
+    enable_early_going_rule: 1,
+    early_going_grace_minutes: 15,
+    early_going_action: 'Half-Day',
+    enable_auto_overtime: 1,
+    overtime_buffer_minutes: 30,
+    overtime_rate_multiplier: 1.5,
+    overtime_fixed_hourly_rate: 0,
+    enable_leave_integration: 1,
+    auto_sync_payroll_deduction: 1,
+  };
+}
+
+function toMinsFromHHMM(timeStr) {
+  if (!timeStr) return null;
+  const parts = String(timeStr).trim().split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1] || '0', 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function computeStatusFromRules({
+  inTime,
+  outTime,
+  workMinutes,
+  lateIn,
+  settings,
+  priorLateCountThisMonth = 0,
+  isApprovedLeave = false,
+}) {
+  const shiftStartMins = toMinsFromHHMM(settings.shift_start) ?? 540; // 09:00
+  const shiftEndMins = toMinsFromHHMM(settings.shift_end) ?? 1080;  // 18:00
+  const graceMins = parseInt(settings.grace_minutes ?? 30, 10);
+  const cutoffMins = shiftStartMins + graceMins;
+
+  const fullDayMins = parseInt(settings.full_day_minutes ?? 480, 10);
+  const halfDayMins = parseInt(settings.half_day_minutes ?? 240, 10);
+  const earlyGraceMins = parseInt(settings.early_going_grace_minutes ?? 15, 10);
+
+  const inMins = toMinsFromHHMM(inTime);
+  const outMins = toMinsFromHHMM(outTime);
+  const calcWorkMins = workMinutes > 0
+    ? workMinutes
+    : (inMins !== null && outMins !== null && outMins > inMins ? outMins - inMins : 0);
+
+  let status = 'Present';
+
+  // 1. Leave Integration: Approved Leave date overrides absence
+  if (isApprovedLeave && !inTime && !outTime) {
+    status = 'On Leave';
+  }
+  // 2. Auto Absent / Auto Present when both punches missing
+  else if (!inTime && !outTime && calcWorkMins === 0) {
+    status = settings.no_punch_default_status || 'Absent';
+  }
+  // 3. Missing Out-Punch Rule
+  else if (inTime && !outTime) {
+    status = settings.missing_out_punch_status || 'Missing';
+  }
+  // 4. Half-Day / Full-Day Working Hours Rule
+  else if (calcWorkMins > 0 && calcWorkMins < halfDayMins) {
+    status = 'Absent';
+  } else if (calcWorkMins >= halfDayMins && calcWorkMins < fullDayMins) {
+    status = 'Half-Day';
+  }
+  // 5. Early Going Rule
+  else if (
+    Number(settings.enable_early_going_rule ?? 1) === 1 &&
+    outMins !== null &&
+    outMins < (shiftEndMins - earlyGraceMins) &&
+    (settings.early_going_action || 'Half-Day') !== 'Ignore'
+  ) {
+    status = settings.early_going_action || 'Half-Day';
+  }
+  // 6. Late Mark Rule + Warning Quota
+  else if ((lateIn > 0) || (inMins !== null && inMins > cutoffMins)) {
+    const quotaEnabled = Number(settings.enable_late_warning_quota ?? 1) === 1;
+    const warningLimit = parseInt(settings.late_warning_limit ?? 3, 10);
+    if (quotaEnabled && priorLateCountThisMonth >= warningLimit) {
+      status = settings.late_penalty_action === 'Salary Cut' ? 'Absent' : 'Half-Day';
+    } else {
+      status = 'Late';
+    }
+  }
+
+  // 7. Auto Overtime (OT) Rule
+  let overtimeHours = 0;
+  if (Number(settings.enable_auto_overtime ?? 1) === 1 && outMins !== null) {
+    const extra = outMins - shiftEndMins;
+    const buffer = parseInt(settings.overtime_buffer_minutes ?? 30, 10);
+    if (extra >= buffer) {
+      overtimeHours = Number((extra / 60).toFixed(2));
+    }
+  }
+
+  return { status, overtimeHours };
+}
+
+exports.getAttendanceSettings = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const settings = await getOrCreateAttendanceSettings(companyId);
+    return res.status(200).json({ success: true, data: settings });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.saveAttendanceSettings = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const {
+      shift_start = '09:00',
+      shift_end = '18:00',
+      grace_minutes = 30,
+      no_punch_default_status = 'Absent',
+      enable_late_warning_quota = 1,
+      late_warning_limit = 3,
+      late_penalty_action = 'Half-Day',
+      full_day_minutes = 480,
+      half_day_minutes = 240,
+      missing_out_punch_status = 'Missing',
+      enable_early_going_rule = 1,
+      early_going_grace_minutes = 15,
+      early_going_action = 'Half-Day',
+      enable_auto_overtime = 1,
+      overtime_buffer_minutes = 30,
+      overtime_rate_multiplier = 1.5,
+      overtime_fixed_hourly_rate = 0,
+      enable_leave_integration = 1,
+      auto_sync_payroll_deduction = 1,
+      recalculate = true,
+    } = req.body;
+
+    await db.query(
+      `INSERT INTO attendance_settings
+       (company_id, shift_start, shift_end, grace_minutes, no_punch_default_status,
+        enable_late_warning_quota, late_warning_limit, late_penalty_action,
+        full_day_minutes, half_day_minutes, missing_out_punch_status,
+        enable_early_going_rule, early_going_grace_minutes, early_going_action,
+        enable_auto_overtime, overtime_buffer_minutes, overtime_rate_multiplier, overtime_fixed_hourly_rate,
+        enable_leave_integration, auto_sync_payroll_deduction)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         shift_start = VALUES(shift_start),
+         shift_end = VALUES(shift_end),
+         grace_minutes = VALUES(grace_minutes),
+         no_punch_default_status = VALUES(no_punch_default_status),
+         enable_late_warning_quota = VALUES(enable_late_warning_quota),
+         late_warning_limit = VALUES(late_warning_limit),
+         late_penalty_action = VALUES(late_penalty_action),
+         full_day_minutes = VALUES(full_day_minutes),
+         half_day_minutes = VALUES(half_day_minutes),
+         missing_out_punch_status = VALUES(missing_out_punch_status),
+         enable_early_going_rule = VALUES(enable_early_going_rule),
+         early_going_grace_minutes = VALUES(early_going_grace_minutes),
+         early_going_action = VALUES(early_going_action),
+         enable_auto_overtime = VALUES(enable_auto_overtime),
+         overtime_buffer_minutes = VALUES(overtime_buffer_minutes),
+         overtime_rate_multiplier = VALUES(overtime_rate_multiplier),
+         overtime_fixed_hourly_rate = VALUES(overtime_fixed_hourly_rate),
+         enable_leave_integration = VALUES(enable_leave_integration),
+         auto_sync_payroll_deduction = VALUES(auto_sync_payroll_deduction)`,
+      [
+        companyId,
+        shift_start,
+        shift_end,
+        parseInt(grace_minutes, 10) || 0,
+        no_punch_default_status || 'Absent',
+        enable_late_warning_quota ? 1 : 0,
+        parseInt(late_warning_limit, 10) || 3,
+        late_penalty_action || 'Half-Day',
+        parseInt(full_day_minutes, 10) || 480,
+        parseInt(half_day_minutes, 10) || 240,
+        missing_out_punch_status || 'Missing',
+        enable_early_going_rule ? 1 : 0,
+        parseInt(early_going_grace_minutes, 10) || 0,
+        early_going_action || 'Half-Day',
+        enable_auto_overtime ? 1 : 0,
+        parseInt(overtime_buffer_minutes, 10) || 0,
+        parseFloat(overtime_rate_multiplier) || 1.5,
+        parseFloat(overtime_fixed_hourly_rate) || 0,
+        enable_leave_integration ? 1 : 0,
+        auto_sync_payroll_deduction ? 1 : 0,
+      ]
+    );
+
+    const settings = await getOrCreateAttendanceSettings(companyId);
+    let recalculatedCount = 0;
+
+    // Auto-recalculate existing Biometric Attendance logs
+    if (recalculate) {
+      let approvedLeaves = [];
+      if (Number(settings.enable_leave_integration) === 1) {
+        try {
+          const [lRows] = await db.query(
+            `SELECT employee_id, DATE_FORMAT(start_date, '%Y-%m-%d') AS start_d, DATE_FORMAT(end_date, '%Y-%m-%d') AS end_d
+             FROM LEAVE_REQUEST WHERE status = 'APPROVED'`
+          );
+          approvedLeaves = lRows;
+        } catch (_) {}
+      }
+
+      const [records] = await db.query(
+        `SELECT a.attendance_id, a.employee_id,
+                DATE_FORMAT(a.work_date, '%Y-%m-%d') AS work_d,
+                DATE_FORMAT(a.work_date, '%Y-%m') AS ym,
+                TIME_FORMAT(a.check_in, '%H:%i') AS in_time,
+                TIME_FORMAT(a.check_out, '%H:%i') AS out_time
+         FROM ATTENDANCE a
+         JOIN EMPLOYEE e ON a.employee_id = e.employee_id
+         WHERE e.company_id = ?
+         ORDER BY a.employee_id ASC, a.work_date ASC`,
+        [companyId]
+      );
+
+      const monthlyLateMap = {};
+      for (const rec of records) {
+        const key = `${rec.employee_id}_${rec.ym}`;
+        const priorLates = monthlyLateMap[key] || 0;
+        const isApprovedLeave = approvedLeaves.some(
+          (l) => l.employee_id === rec.employee_id && rec.work_d >= l.start_d && rec.work_d <= l.end_d
+        );
+        const { status, overtimeHours } = computeStatusFromRules({
+          inTime: rec.in_time,
+          outTime: rec.out_time,
+          workMinutes: 0,
+          lateIn: 0,
+          settings,
+          priorLateCountThisMonth: priorLates,
+          isApprovedLeave,
+        });
+        if (status === 'Late') monthlyLateMap[key] = priorLates + 1;
+
+        await db.query(
+          'UPDATE ATTENDANCE SET status = ?, overtime_hours = ? WHERE attendance_id = ?',
+          [status, overtimeHours, rec.attendance_id]
+        );
+        recalculatedCount++;
+      }
+
+      // Sync Attendance Absence / Half-Day Deductions to Payroll fields if enabled
+      if (Number(settings.auto_sync_payroll_deduction) === 1) {
+        const now = new Date();
+        const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const [empSummary] = await db.query(
+          `SELECT e.employee_id, COALESCE(e.salary_base, 0) AS salary_base,
+                  SUM(CASE WHEN a.status = 'Absent' THEN 1 ELSE 0 END) AS absent_days,
+                  SUM(CASE WHEN a.status = 'Half-Day' THEN 1 ELSE 0 END) AS half_days
+           FROM EMPLOYEE e
+           LEFT JOIN ATTENDANCE a ON a.employee_id = e.employee_id AND DATE_FORMAT(a.work_date, '%Y-%m') = ?
+           WHERE e.company_id = ?
+           GROUP BY e.employee_id, e.salary_base`,
+          [curYm, companyId]
+        );
+        for (const es of empSummary) {
+          const dailyRate = (parseFloat(es.salary_base) || 0) / 30.0;
+          const unpaidEquivalent = (Number(es.absent_days) || 0) + (Number(es.half_days) || 0) * 0.5;
+          const deduction = Number((unpaidEquivalent * dailyRate).toFixed(2));
+          try {
+            await db.query(
+              'UPDATE EMPLOYEE SET unpaid_leaves_taken = ?, total_leave_deduction = ? WHERE employee_id = ?',
+              [Math.round(unpaidEquivalent), deduction, es.employee_id]
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Attendance rules saved & ${recalculatedCount} biometric records recalculated!`,
+      data: settings,
+      recalculatedCount,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+// ============================================================================
+// ATTENDANCE MASTER (Status, Shift, Holiday, Weekly Off, Leave Type, Device)
+// ============================================================================
+const MASTER_TABLES = {
+  status: 'att_master_status',
+  shift: 'att_master_shift',
+  holiday: 'att_master_holiday',
+  weekly_off: 'att_master_weekly_off',
+  leave_type: 'att_master_leave_type',
+  device: 'att_master_device',
+};
+
+async function seedAttendanceMastersIfEmpty(companyId) {
+  const [st] = await db.query('SELECT COUNT(*) AS cnt FROM att_master_status WHERE company_id = ?', [companyId]);
+  if (Number(st[0]?.cnt || 0) === 0) {
+    const defaults = [
+      ['P', 'Present', 1, '#059669'],
+      ['A', 'Absent', 0, '#DC2626'],
+      ['HD', 'Half Day', 1, '#7C3AED'],
+      ['L', 'Leave', 1, '#D97706'],
+      ['WO', 'Weekly Off', 1, '#0284C7'],
+      ['H', 'Holiday', 1, '#0EA5E9'],
+      ['OD', 'On Duty', 1, '#10B981'],
+      ['SHL', 'Short Leave', 1, '#F59E0B'],
+    ];
+    for (const [code, name, isPaid, color] of defaults) {
+      await db.query(
+        'INSERT INTO att_master_status (company_id, code, name, is_paid, color_hex) VALUES (?, ?, ?, ?, ?)',
+        [companyId, code, name, isPaid, color]
+      );
+    }
+  }
+
+  const [sh] = await db.query('SELECT COUNT(*) AS cnt FROM att_master_shift WHERE company_id = ?', [companyId]);
+  if (Number(sh[0]?.cnt || 0) === 0) {
+    await db.query(
+      'INSERT INTO att_master_shift (company_id, shift_name, start_time, end_time, break_minutes) VALUES (?, ?, ?, ?, ?)',
+      [companyId, 'General Shift', '09:00', '18:00', 60]
+    );
+  }
+
+  const [wo] = await db.query('SELECT COUNT(*) AS cnt FROM att_master_weekly_off WHERE company_id = ?', [companyId]);
+  if (Number(wo[0]?.cnt || 0) === 0) {
+    await db.query(
+      'INSERT INTO att_master_weekly_off (company_id, rule_name, off_days, saturday_rule) VALUES (?, ?, ?, ?)',
+      [companyId, 'Standard Weekly Off', 'Sunday', 'Alternate (2nd & 4th Off)']
+    );
+  }
+
+  const [lt] = await db.query('SELECT COUNT(*) AS cnt FROM att_master_leave_type WHERE company_id = ?', [companyId]);
+  if (Number(lt[0]?.cnt || 0) === 0) {
+      const leaves = [
+        ['CL', 'Casual Leave', 12, 1],
+        ['SL', 'Sick Leave', 8, 1],
+        ['PL', 'Paid Leave', 15, 1],
+        ['SHL', 'Short Leave', 12, 1],
+      ];
+    for (const [code, name, quota, paid] of leaves) {
+      await db.query(
+        'INSERT INTO att_master_leave_type (company_id, leave_code, leave_name, annual_quota, is_paid) VALUES (?, ?, ?, ?, ?)',
+        [companyId, code, name, quota, paid]
+      );
+    }
+  }
+}
+
+exports.getAttendanceMasters = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    await seedAttendanceMastersIfEmpty(companyId);
+
+    const [statuses] = await db.query('SELECT * FROM att_master_status WHERE company_id = ? ORDER BY id ASC', [companyId]);
+    const [shifts] = await db.query('SELECT * FROM att_master_shift WHERE company_id = ? ORDER BY id ASC', [companyId]);
+    const [holidays] = await db.query('SELECT id, company_id, holiday_name, DATE_FORMAT(holiday_date, "%Y-%m-%d") AS holiday_date, holiday_type FROM att_master_holiday WHERE company_id = ? ORDER BY holiday_date ASC', [companyId]);
+    const [weeklyOffs] = await db.query('SELECT * FROM att_master_weekly_off WHERE company_id = ? ORDER BY id ASC', [companyId]);
+    const [leaveTypes] = await db.query('SELECT * FROM att_master_leave_type WHERE company_id = ? ORDER BY id ASC', [companyId]);
+    const [devices] = await db.query('SELECT * FROM att_master_device WHERE company_id = ? ORDER BY id ASC', [companyId]);
+
+    return res.status(200).json({
+      success: true,
+      data: { statuses, shifts, holidays, weeklyOffs, leaveTypes, devices },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.addAttendanceMasterItem = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const { type } = req.params;
+    const b = req.body || {};
+
+    if (type === 'status') {
+      await db.query(
+        'INSERT INTO att_master_status (company_id, code, name, is_paid, color_hex) VALUES (?, ?, ?, ?, ?)',
+        [companyId, String(b.code || '').toUpperCase(), b.name, b.is_paid ? 1 : 0, b.color_hex || '#059669']
+      );
+    } else if (type === 'shift') {
+      await db.query(
+        'INSERT INTO att_master_shift (company_id, shift_name, start_time, end_time, break_minutes) VALUES (?, ?, ?, ?, ?)',
+        [companyId, b.shift_name, b.start_time || '09:00', b.end_time || '18:00', parseInt(b.break_minutes, 10) || 60]
+      );
+    } else if (type === 'holiday') {
+      await db.query(
+        'INSERT INTO att_master_holiday (company_id, holiday_name, holiday_date, holiday_type) VALUES (?, ?, ?, ?)',
+        [companyId, b.holiday_name, b.holiday_date, b.holiday_type || 'Public Holiday']
+      );
+    } else if (type === 'weekly_off') {
+      await db.query(
+        'INSERT INTO att_master_weekly_off (company_id, rule_name, off_days, saturday_rule) VALUES (?, ?, ?, ?)',
+        [companyId, b.rule_name, b.off_days || 'Sunday', b.saturday_rule || 'All Working']
+      );
+    } else if (type === 'leave_type') {
+      await db.query(
+        'INSERT INTO att_master_leave_type (company_id, leave_code, leave_name, annual_quota, is_paid) VALUES (?, ?, ?, ?, ?)',
+        [companyId, String(b.leave_code || '').toUpperCase(), b.leave_name, parseInt(b.annual_quota, 10) || 12, b.is_paid ? 1 : 0]
+      );
+    } else if (type === 'device') {
+      await db.query(
+        'INSERT INTO att_master_device (company_id, device_name, device_code, device_type, ip_address, location, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [companyId, b.device_name, b.device_code, b.device_type || 'Biometric', b.ip_address || '', b.location || '', b.status || 'Active']
+      );
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid master type.' });
+    }
+
+    return res.status(201).json({ success: true, message: 'Master record added successfully!' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.deleteAttendanceMasterItem = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const { type, id } = req.params;
+    const table = MASTER_TABLES[type];
+    if (!table) return res.status(400).json({ success: false, message: 'Invalid master type.' });
+
+    await db.query(`DELETE FROM ${table} WHERE id = ? AND company_id = ?`, [id, companyId]);
+    return res.status(200).json({ success: true, message: 'Deleted successfully.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.bulkAddHolidays = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const holidays = Array.isArray(req.body?.holidays) ? req.body.holidays : [];
+    if (holidays.length === 0) {
+      return res.status(400).json({ success: false, message: 'No holidays provided.' });
+    }
+
+    const [existing] = await db.query(
+      'SELECT DATE_FORMAT(holiday_date, "%Y-%m-%d") AS d FROM att_master_holiday WHERE company_id = ?',
+      [companyId]
+    );
+    const existingDates = new Set(existing.map((r) => r.d));
+
+    let inserted = 0;
+    let skipped = 0;
+    for (const h of holidays) {
+      const name = String(h.holiday_name || '').trim();
+      const dateStr = String(h.holiday_date || '').trim().slice(0, 10);
+      const type = String(h.holiday_type || 'Public Holiday').trim();
+      if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        skipped++;
+        continue;
+      }
+      if (existingDates.has(dateStr)) {
+        skipped++;
+        continue;
+      }
+      await db.query(
+        'INSERT INTO att_master_holiday (company_id, holiday_name, holiday_date, holiday_type) VALUES (?, ?, ?, ?)',
+        [companyId, name, dateStr, type]
+      );
+      existingDates.add(dateStr);
+      inserted++;
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `${inserted} holidays imported (${skipped} duplicate/skipped).`,
+      inserted,
+      skipped,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.importHolidaysExcel = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Please upload an Excel or CSV file.' });
+    }
+
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+
+    const [existing] = await db.query(
+      'SELECT DATE_FORMAT(holiday_date, "%Y-%m-%d") AS d FROM att_master_holiday WHERE company_id = ?',
+      [companyId]
+    );
+    const existingDates = new Set(existing.map((r) => r.d));
+
+    let inserted = 0;
+    let skipped = 0;
+
+    for (const row of rows) {
+      const norm = {};
+      for (const [k, v] of Object.entries(row)) {
+        norm[String(k).toLowerCase().replace(/[^a-z0-9]/g, '')] = v;
+      }
+      const name = String(
+        norm.holidayname || norm.holiday || norm.name || norm.occasion || norm.title || ''
+      ).trim();
+      const rawDate = norm.holidaydate || norm.date || '';
+      const type = String(norm.holidaytype || norm.type || 'Public Holiday').trim();
+
+      let dateStr = '';
+      if (rawDate instanceof Date && !Number.isNaN(rawDate.getTime())) {
+        const y = rawDate.getFullYear();
+        const m = String(rawDate.getMonth() + 1).padStart(2, '0');
+        const d = String(rawDate.getDate()).padStart(2, '0');
+        dateStr = `${y}-${m}-${d}`;
+      } else {
+        const txt = String(rawDate).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(txt)) {
+          dateStr = txt.slice(0, 10);
+        } else if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{4}$/.test(txt)) {
+          const [dd, mm, yyyy] = txt.split(/[\/-]/);
+          dateStr = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+        }
+      }
+
+      if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || existingDates.has(dateStr)) {
+        skipped++;
+        continue;
+      }
+
+      await db.query(
+        'INSERT INTO att_master_holiday (company_id, holiday_name, holiday_date, holiday_type) VALUES (?, ?, ?, ?)',
+        [companyId, name, dateStr, type || 'Public Holiday']
+      );
+      existingDates.add(dateStr);
+      inserted++;
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: `Excel imported: ${inserted} holidays added (${skipped} skipped/duplicates).`,
+      inserted,
+      skipped,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 };

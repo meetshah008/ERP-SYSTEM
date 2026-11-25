@@ -19,8 +19,10 @@ class PermissionSidebar extends StatefulWidget {
     required this.activeMenu,
     required this.onItemSelected,
     required this.onLogout,
+    this.hasGeneralTaskDot = false,
   });
 
+  final bool hasGeneralTaskDot;
   final List<AppNavGroup> groups;
   final String companyName;
   final String role;
@@ -244,7 +246,18 @@ class _PermissionSidebarState extends State<PermissionSidebar> {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
+
                 ),
+                if (item.id == 'general_tasks' && widget.hasGeneralTaskDot)
+                  Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEF4444), // Red dot (ya 0xFF8B5CF6 purple dot ke liye)
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 if (item.opensScreen)
                   Icon(
                     Icons.chevron_right_rounded,

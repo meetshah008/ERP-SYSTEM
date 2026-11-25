@@ -518,7 +518,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         isExpanded: true,
                         dropdownColor: dialogBg,
                         style: TextStyle(color: textTitle, fontSize: 13),
-                        items: ['Present', 'Late', 'Half-Day', 'Absent'].map((s) {
+                        items: ['Present', 'Late', 'Half-Day', 'Missing', 'Absent'].map((s) {
                           return DropdownMenuItem(value: s, child: Text(s));
                         }).toList(),
                         onChanged: (val) {
@@ -777,6 +777,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             statusColor = const Color(0xFFD97706);
                           } else if (status == 'Half-Day') {
                             statusColor = const Color(0xFF7C3AED);
+                          } else if (status == 'Missing') {
+                            statusColor = Colors.deepOrange;
                           } else {
                             statusColor = Colors.red;
                           }
@@ -1127,6 +1129,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       const SizedBox(width: 8),
                       _buildStatPill('Half-Day', totalHalfDay, const Color(0xFF8B5CF6)),
                       const SizedBox(width: 8),
+                      _buildStatPill('Missing', _filteredRecords.where((r) => r['status'] == 'Missing').length, Colors.deepOrange),
                       _buildStatPill('Absent', totalAbsent, Colors.redAccent),
                     ],
                   ),

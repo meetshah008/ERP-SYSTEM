@@ -20,12 +20,13 @@ import '../05_tasks/project_tasks_screen.dart';
 import '../04_hr_module/employee_details_screen.dart';
 import '../04_hr_module/salary_increment_screen.dart';
 import '../04_hr_module/departments_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint; // <-- Add this
-import '../../core/widgets/expandable_nav_bar.dart';  // <-- Add this
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
+import '../../core/widgets/expandable_nav_bar.dart';
 import '../../core/navigation/app_navigation.dart';
 import '../../core/widgets/permission_sidebar.dart';
 import '../../core/theme/enterprise_theme.dart';
-
+import '../04_hr_module/attendance_settings_screen.dart';
+import '../04_hr_module/attendance_master_screen.dart';
 /// Dashboard cards are a company-wide overview, so they never send
 /// role/employee narrowing filters. Those filters belong to the detailed
 /// Projects/Tasks screens; sending them here made every non-admin role's
@@ -157,6 +158,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   int _unreadNotifCount = 0;
   List<dynamic> _notifications = [];
   Timer? _notifTimer;
+
+  bool get _hasReviewTaskDot {
+    return _notifications.any(
+          (n) =>
+      (n['is_read'] == 0 || n['is_read'] == false) &&
+          n['type'] == 'TASK_REVIEW_REQUEST',
+    );
+  }
 
   // 🔐 Permissions Map (Logged-in user ke allowed/denied features)
   Map<String, bool> _permissions = {};
@@ -841,6 +850,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 companyName: _companyLabel,
                                 role: widget.role,
                                 userName: _effectiveUserName,
+                                hasGeneralTaskDot: _hasReviewTaskDot,
                                 activeNavId: _activeNavId,
                                 activeMenu: _selectedMenu,
                                 onItemSelected: _onDynamicNavSelected,
@@ -4123,6 +4133,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         ),
       );
     }
+    if (_hasPermission('attendance_override')) {
+      tiles.add(
+        _buildMobileHrTile(
+          isDark: isDark,
+          title: 'Attendance Setting',
+          subtitle: 'Rules & cutoffs',
+          icon: Icons.tune_rounded,
+          color: MobilePalette.sky,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AttendanceSettingsScreen(),
+            ),
+          ),
+        ),
+      );
+      tiles.add(
+        _buildMobileHrTile(
+          isDark: isDark,
+          title: 'Attendance Master',
+          subtitle: 'Holiday calendar',
+          icon: Icons.dataset_rounded,
+          color: const Color(0xFF6366F1),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AttendanceMasterScreen(),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4701,6 +4743,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const SalaryIncrementScreen()),
+                    ),
+                    cardBg: cardBg,
+                    cardBorder: cardBorder,
+                    textTitle: textTitle,
+                    textSub: textSub,
+                    isDark: isDark,
+                  ),
+                // 5. Attendance Setting Card (Admin Rules & Biometric Sync)
+                if (_hasPermission('attendance_override'))
+                  _buildHrFeatureCard(
+                    title: 'Attendance Setting',
+                    badgeText: 'Rules & Cutoffs',
+                    subtitle: 'Configure late warning quota, missing punch & OT calculation.',
+                    icon: Icons.tune_rounded,
+                    color: const Color(0xFF0EA5E9),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AttendanceSettingsScreen()),
+                    ),
+                    cardBg: cardBg,
+                    cardBorder: cardBorder,
+                    textTitle: textTitle,
+                    textSub: textSub,
+                    isDark: isDark,
+                  ),
+                // 6. Attendance Master Card (Holiday Master active; other masters paused)
+                if (_hasPermission('attendance_override'))
+                  _buildHrFeatureCard(
+                    title: 'Attendance Master',
+                    badgeText: 'Holiday Calendar',
+                    subtitle: 'Manage company holidays via 1-click presets, Excel import, or date picker.',
+                    icon: Icons.dataset_rounded,
+                    color: const Color(0xFF6366F1),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AttendanceMasterScreen()),
                     ),
                     cardBg: cardBg,
                     cardBorder: cardBorder,

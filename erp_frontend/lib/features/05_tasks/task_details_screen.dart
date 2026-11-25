@@ -856,7 +856,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
                   tooltip: 'Return for Revision',
                   onPressed: _returnForRevision,
                 ),
-              ] else if (_canManageTask)
+              ]else if (_canManageTask)
                 IconButton(
                   icon: Icon(
                     isDone ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
