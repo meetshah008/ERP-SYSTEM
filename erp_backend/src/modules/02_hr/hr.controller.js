@@ -828,6 +828,7 @@ exports.uploadBiometricSheet = async (req, res) => {
           settings: attSettings,
           priorLateCountThisMonth: priorLateCount,
           isApprovedLeave,
+          isSunday: new Date(`${cleanDate}T00:00:00`).getDay() === 0,
         });
         status = computed.status;
         if (overtimeHours === 0 && computed.overtimeHours > 0) {
@@ -2774,6 +2775,7 @@ function computeStatusFromRules({
   settings,
   priorLateCountThisMonth = 0,
   isApprovedLeave = false,
+  isSunday = false,
 }) {
   const shiftStartMins = toMinsFromHHMM(settings.shift_start) ?? 540; // 09:00
   const shiftEndMins = toMinsFromHHMM(settings.shift_end) ?? 1080;  // 18:00
@@ -2795,6 +2797,10 @@ function computeStatusFromRules({
   // 1. Leave Integration: Approved Leave date overrides absence
   if (isApprovedLeave && !inTime && !outTime) {
     status = 'On Leave';
+  }
+  // 1B. Sunday (Weekly Off) check when no punches recorded
+  else if (isSunday && !inTime && !outTime && calcWorkMins === 0) {
+    status = 'Weekly Off';
   }
   // 2. Auto Absent / Auto Present when both punches missing
   else if (!inTime && !outTime && calcWorkMins === 0) {
@@ -2976,6 +2982,7 @@ exports.saveAttendanceSettings = async (req, res) => {
           settings,
           priorLateCountThisMonth: priorLates,
           isApprovedLeave,
+          isSunday: new Date(`${rec.work_d}T00:00:00`).getDay() === 0,
         });
         if (status === 'Late') monthlyLateMap[key] = priorLates + 1;
 

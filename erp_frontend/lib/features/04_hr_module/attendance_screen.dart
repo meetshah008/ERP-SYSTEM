@@ -29,7 +29,16 @@ bool isSundayAttendanceRecord(dynamic record) {
 bool hasMissingPunchTimes(dynamic record) {
   if (record is! Map) return false;
   if (isSundayAttendanceRecord(record)) return false;
-  return isMissingAttendanceTime(record['check_in_time']) ||
+  final status = (record['status'] ?? '').toString();
+  // Absent, Weekly Off, On Leave, aur Holiday ko Missing Data mein count nahi karna
+  if (status == 'Absent' ||
+      status == 'Weekly Off' ||
+      status == 'On Leave' ||
+      status == 'Holiday') {
+    return false;
+  }
+  return status == 'Missing' ||
+      isMissingAttendanceTime(record['check_in_time']) ||
       isMissingAttendanceTime(record['check_out_time']);
 }
 
@@ -518,7 +527,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         isExpanded: true,
                         dropdownColor: dialogBg,
                         style: TextStyle(color: textTitle, fontSize: 13),
-                        items: ['Present', 'Late', 'Half-Day', 'Missing', 'Absent'].map((s) {
+                        items: ['Present', 'Late', 'Half-Day', 'Missing', 'Weekly Off', 'Absent'].map((s) {
                           return DropdownMenuItem(value: s, child: Text(s));
                         }).toList(),
                         onChanged: (val) {
@@ -647,7 +656,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         final memberPresent = empLogs.where((r) => r['status'] == 'Present').length;
         final memberLate = empLogs.where((r) => r['status'] == 'Late').length;
         final memberHalfDay = empLogs.where((r) => r['status'] == 'Half-Day').length;
-        final memberAbsent = empLogs.where((r) => r['status'] == 'Absent').length;
+        final memberAbsent = empLogs.where((r) => r['status'] == 'Absent' && !isSundayAttendanceRecord(r)).length;
 
         const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -766,7 +775,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         // Data Rows
                         ...List.generate(empLogs.length, (i) {
                           final log = empLogs[i];
-                          final status = log['status'] ?? 'Present';
+                          final rawStatus = (log['status'] ?? 'Present').toString();
+                          final isSunOff = isSundayAttendanceRecord(log) &&
+                              (rawStatus == 'Absent' ||
+                                  (isMissingAttendanceTime(log['check_in_time']) &&
+                                      isMissingAttendanceTime(log['check_out_time'])));
+                          final status = isSunOff ? 'Weekly Off' : rawStatus;
                           final parsedDate = DateTime.tryParse(log['work_date'] ?? '');
                           final dayLabel = parsedDate != null ? dayNames[parsedDate.weekday - 1] : '-';
 
@@ -779,9 +793,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             statusColor = const Color(0xFF7C3AED);
                           } else if (status == 'Missing') {
                             statusColor = Colors.deepOrange;
-                          } else {
+                          } else if (status == 'Weekly Off') {
+                            statusColor = const Color(0xFF0284C7);
+                          } else if (status == 'Missing') {
+                           statusColor = Colors.deepOrange; }
+                          else {
                             statusColor = Colors.red;
                           }
+
 
                           return TableRow(
                             children: [
@@ -851,7 +870,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     // KPI Counts
     final totalPresent = _filteredRecords.where((r) => r['status'] == 'Present').length;
     final totalLate = _filteredRecords.where((r) => r['status'] == 'Late').length;
-    final totalAbsent = _filteredRecords.where((r) => r['status'] == 'Absent').length;
+    final totalAbsent = _filteredRecords.where((r) => r['status'] == 'Absent' && !isSundayAttendanceRecord(r)).length;
     final totalHalfDay = _filteredRecords.where((r) => r['status'] == 'Half-Day').length;
 
     return Scaffold(
