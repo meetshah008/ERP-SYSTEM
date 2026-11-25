@@ -248,6 +248,24 @@ async function testConnection() {
                       } catch (_) {}
                     }
 
+                        // 2F. Task Work Attachments / File Sharing
+                        try {
+                          await connection.query(`
+                            CREATE TABLE IF NOT EXISTS task_attachments (
+                              attachment_id INT AUTO_INCREMENT PRIMARY KEY,
+                              company_id INT NOT NULL DEFAULT 1,
+                              task_id INT NOT NULL,
+                              uploaded_by INT NULL,
+                              file_name VARCHAR(255) NOT NULL,
+                              mime_type VARCHAR(120) DEFAULT 'application/octet-stream',
+                              file_size INT DEFAULT 0,
+                              file_data LONGBLOB NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              INDEX idx_ta_task (task_id)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                          `);
+                        } catch (_) {}
+
     console.log('✅ Master Database tables & columns verified!');
     connection.release();
   } catch (error) {

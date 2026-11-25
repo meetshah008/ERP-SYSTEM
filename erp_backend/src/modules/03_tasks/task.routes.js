@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const taskController = require('./task.controller');
+const multer = require('multer');
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max per file
+});
+
 
 // 1. Naya task banana (POST)
 router.post('/', taskController.createTask);
@@ -19,6 +25,11 @@ router.post('/:id/reject-review', taskController.rejectTaskReview);
 // 4. Task Edit & Delete routes
 router.put('/:id', taskController.updateTask);
 router.delete('/:id', taskController.deleteTask);
+
+// 5. Task File Sharing / Attachments Routes
+router.post('/:id/attachments', upload.single('file'), taskController.uploadTaskAttachment);
+router.get('/:id/attachments/:attachmentId/download', taskController.downloadTaskAttachment);
+router.delete('/:id/attachments/:attachmentId', taskController.deleteTaskAttachment);
 
 
 module.exports = router;

@@ -2806,8 +2806,8 @@ function computeStatusFromRules({
   else if (!inTime && !outTime && calcWorkMins === 0) {
     status = settings.no_punch_default_status || 'Absent';
   }
-  // 3. Missing Out-Punch Rule
-  else if (inTime && !outTime) {
+  // 3. Missing In-Punch or Out-Punch Rule
+  else if ((inTime && !outTime) || (!inTime && outTime)) {
     status = settings.missing_out_punch_status || 'Missing';
   }
   // 4. Half-Day / Full-Day Working Hours Rule
@@ -2830,7 +2830,7 @@ function computeStatusFromRules({
     const quotaEnabled = Number(settings.enable_late_warning_quota ?? 1) === 1;
     const warningLimit = parseInt(settings.late_warning_limit ?? 3, 10);
     if (quotaEnabled && priorLateCountThisMonth >= warningLimit) {
-      status = settings.late_penalty_action === 'Salary Cut' ? 'Absent' : 'Half-Day';
+      status = settings.late_penalty_action === 'Short Leave' ? 'Short Leave' : 'Half-Day';
     } else {
       status = 'Late';
     }

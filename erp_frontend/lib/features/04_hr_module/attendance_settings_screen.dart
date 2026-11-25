@@ -243,11 +243,11 @@ class _AttendanceSettingsScreenState extends State<AttendanceSettingsScreen> {
                                   contentPadding: EdgeInsets.zero,
                                   activeColor: EnterpriseColors.emerald,
                                   title: Text(
-                                    'Enable Late Warning Quota -> Half-Day / Salary Cut',
+                                    'Enable Late Warning Quota -> Half-Day / Short Leave',
                                     style: TextStyle(color: textTitle, fontWeight: FontWeight.w600, fontSize: 14),
                                   ),
                                   subtitle: Text(
-                                    'After exhausting allowed warnings (e.g. 3 lates), further lates will count as Half-Day or Salary Cut.',
+                                    'After exhausting allowed warnings (e.g. 3 lates), further lates will count as Half-Day or Short Leave.',
                                     style: TextStyle(color: textSub, fontSize: 12),
                                   ),
                                   value: _enableWarningQuota,
@@ -262,7 +262,7 @@ class _AttendanceSettingsScreenState extends State<AttendanceSettingsScreen> {
                                       _dropdown(
                                         label: 'Action After Quota Ends',
                                         value: _latePenaltyAction,
-                                        items: const ['Half-Day', 'Salary Cut'],
+                                        items: const ['Half-Day', 'Short Leave'],
                                         cardBg: cardBg,
                                         textTitle: textTitle,
                                         textSub: textSub,

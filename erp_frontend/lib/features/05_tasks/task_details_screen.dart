@@ -7,6 +7,8 @@ import '../../core/network/api_client.dart';
 import '../../core/widgets/botanical_background.dart';
 import '../../core/network/session_manager.dart';
 import 'task_form_screen.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:web/web.dart' as web; // Web par direct file download ke liye
 
 class TaskDetailsScreen extends StatefulWidget {
   final dynamic taskId;
@@ -60,6 +62,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
   final _logDescCtrl = TextEditingController();
   int? _logWorkerId;
   bool _isLoggingHours = false;
+  bool _isUploadingFile = false;
 
   bool get _isAssignee {
     if (_currentEmployeeId == null || _task == null) return false;
@@ -315,6 +318,70 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     } catch (e) {
       _showSnackbar('Error approving task: $e', isSuccess: false);
     }
+  }
+
+  Future<void> _uploadAttachment() async {
+    final result = await FilePicker.platform.pickFiles(withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null) return;
+
+    setState(() => _isUploadingFile = true);
+    try {
+      final uri = Uri.parse('$_apiHost/api/tasks/${widget.taskId}/attachments');
+      final req = http.MultipartRequest('POST', uri);
+      req.headers.addAll(await ApiClient.getMultipartHeaders());
+      req.files.add(http.MultipartFile.fromBytes('file', file.bytes!, filename: file.name));
+
+      final res = await req.send();
+      if (res.statusCode == 201) {
+        _showSnackbar('File "${file.name}" uploaded!', isSuccess: true);
+        await _fetchTaskDetails();
+      } else {
+        _showSnackbar('Upload failed (${res.statusCode})', isSuccess: false);
+      }
+    } catch (e) {
+      _showSnackbar('Upload error: $e', isSuccess: false);
+    }
+    if (mounted) setState(() => _isUploadingFile = false);
+  }
+
+  Future<void> _downloadAttachment(Map<String, dynamic> att) async {
+    final url = '$_apiHost/api/tasks/${widget.taskId}/attachments/${att['attachment_id']}/download';
+    final name = (att['file_name'] ?? 'file').toString();
+    final mime = (att['mime_type'] ?? '').toString();
+
+    if (mime.startsWith('image/')) {
+      try {
+        final res = await ApiClient.get(Uri.parse(url));
+        if (res.statusCode == 200 && mounted) {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: Text(name, style: const TextStyle(fontSize: 14)),
+              content: Image.memory(res.bodyBytes, fit: BoxFit.contain),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+            ),
+          );
+          return;
+        }
+      } catch (_) {}
+    }
+    if (kIsWeb) {
+      web.window.open(url, '_blank');
+    }
+  }
+
+  Future<void> _deleteAttachment(dynamic attachmentId) async {
+    try {
+      final res = await ApiClient.delete(
+        Uri.parse('$_apiHost/api/tasks/${widget.taskId}/attachments/$attachmentId'),
+      );
+      if (res.statusCode == 200) {
+        _showSnackbar('File removed.', isSuccess: true);
+        await _fetchTaskDetails();
+      }
+    } catch (_) {}
   }
 
   // 2C. RETURN FOR REVISION
@@ -699,6 +766,10 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
 
                                 // E. SUBTASKS CHECKLIST CARD (Interactive checklist + inline add)
                                 _buildChecklistCard(cardBg, cardBorder, textTitle, textSub, inputBg, subtasks, doneSubtasks, totalSubtasks, subtaskProgress, isDark),
+                                const SizedBox(height: 16),
+
+                                // E2. WORK FILES & ATTACHMENTS CARD
+                                _buildAttachmentsCard(cardBg, cardBorder, textTitle, textSub, isDark),
                                 const SizedBox(height: 16),
 
                                 // F. TIME TRACKING & LOGGED HOURS (Interactive timesheet + inline log)
@@ -1420,4 +1491,83 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
     );
   }
 
+  Widget _buildAttachmentsCard(Color cardBg, Color cardBorder, Color textTitle, Color textSub, bool isDark) {
+    final attachments = (_task?['attachments'] as List?) ?? [];
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.attach_file_rounded, size: 18, color: Color(0xFF0EA5E9)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Work Files & Attachments (${attachments.length})',
+                  style: TextStyle(color: textTitle, fontSize: 14.5, fontWeight: FontWeight.bold),
+                ),
+              ),
+              if (_canManageTask)
+                ElevatedButton.icon(
+                  onPressed: _isUploadingFile ? null : _uploadAttachment,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0EA5E9),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  icon: _isUploadingFile
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.upload_file_rounded, size: 16),
+                  label: const Text('Attach File', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (attachments.isEmpty)
+            Text(
+              'No work files attached yet. Upload deliverables before sending for review.',
+              style: TextStyle(color: textSub, fontSize: 12.5),
+            )
+          else
+            ...attachments.map((att) {
+              final kb = ((int.tryParse('${att['file_size'] ?? 0}') ?? 0) / 1024).toStringAsFixed(1);
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.insert_drive_file_rounded, color: Color(0xFF0EA5E9)),
+                title: Text(
+                  '${att['file_name']}',
+                  style: TextStyle(color: textTitle, fontSize: 13.5, fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  '$kb KB • Uploaded by ${att['uploader_name'] ?? 'Staff'}',
+                  style: TextStyle(color: textSub, fontSize: 11.5),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.download_rounded, color: Color(0xFF10B981)),
+                      tooltip: 'View / Download',
+                      onPressed: () => _downloadAttachment(Map<String, dynamic>.from(att)),
+                    ),
+                    if (_canManageTask)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                        tooltip: 'Remove File',
+                        onPressed: () => _deleteAttachment(att['attachment_id']),
+                      ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
 }

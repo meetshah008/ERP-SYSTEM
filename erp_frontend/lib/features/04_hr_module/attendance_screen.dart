@@ -527,7 +527,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         isExpanded: true,
                         dropdownColor: dialogBg,
                         style: TextStyle(color: textTitle, fontSize: 13),
-                        items: ['Present', 'Late', 'Half-Day', 'Missing', 'Weekly Off', 'Absent'].map((s) {
+                        items: ['Present', 'Late', 'Half-Day', 'Short Leave', 'Missing', 'Weekly Off', 'Absent'].map((s) {
                           return DropdownMenuItem(value: s, child: Text(s));
                         }).toList(),
                         onChanged: (val) {
@@ -795,9 +795,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             statusColor = Colors.deepOrange;
                           } else if (status == 'Weekly Off') {
                             statusColor = const Color(0xFF0284C7);
-                          } else if (status == 'Missing') {
-                           statusColor = Colors.deepOrange; }
-                          else {
+                          } else if (status == 'Short Leave') {
+                            statusColor = const Color(0xFFF59E0B);
+                          } else {
                             statusColor = Colors.red;
                           }
 

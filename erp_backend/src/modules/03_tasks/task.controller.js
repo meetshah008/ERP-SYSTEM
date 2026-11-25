@@ -418,6 +418,22 @@ exports.getTaskDetails = async (req, res) => {
     } catch (_) {}
     task.timesheets = timesheets;
 
+ // Attachments (metadata only, without LONGBLOB bytes)
+ let attachments = [];
+ try {
+   const [attRows] = await db.query(
+     `SELECT a.attachment_id, a.task_id, a.uploaded_by, a.file_name, a.mime_type, a.file_size, a.created_at,
+             e.full_name AS uploader_name
+      FROM task_attachments a
+      LEFT JOIN employee e ON a.uploaded_by = e.employee_id
+      WHERE a.task_id = ?
+      ORDER BY a.created_at DESC`,
+     [id]
+   );
+   attachments = attRows;
+ } catch (_) {}
+ task.attachments = attachments;
+
     return res.status(200).json({ success: true, data: task });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -757,4 +773,70 @@ exports.deleteTask = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+  // 6. TASK FILE UPLOAD (Assigned Employee / Reviewer / Admin)
+  exports.uploadTaskAttachment = async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'Please select a file to upload.' });
+      }
+      const companyId = resolveCompanyId(req) || 1;
+      const requester = await resolveRequesterInfo(req);
+
+      const [result] = await db.query(
+        `INSERT INTO task_attachments (company_id, task_id, uploaded_by, file_name, mime_type, file_size, file_data)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          companyId,
+          id,
+          requester.employeeId || null,
+          req.file.originalname,
+          req.file.mimetype || 'application/octet-stream',
+          req.file.size || 0,
+          req.file.buffer,
+        ]
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: 'File uploaded to task!',
+        attachment_id: result.insertId,
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  };
+
+  // 7. TASK FILE DOWNLOAD / PREVIEW
+  exports.downloadTaskAttachment = async (req, res) => {
+    try {
+      const { id, attachmentId } = req.params;
+      const [rows] = await db.query(
+        `SELECT file_name, mime_type, file_data FROM task_attachments WHERE attachment_id = ? AND task_id = ? LIMIT 1`,
+        [attachmentId, id]
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'File not found.' });
+      }
+      const file = rows[0];
+      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.file_name)}"`);
+      return res.send(file.file_data);
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  };
+
+  // 8. TASK FILE DELETE
+  exports.deleteTaskAttachment = async (req, res) => {
+    try {
+      const { id, attachmentId } = req.params;
+      await db.query('DELETE FROM task_attachments WHERE attachment_id = ? AND task_id = ?', [attachmentId, id]);
+      return res.status(200).json({ success: true, message: 'Attachment deleted.' });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  };
 
