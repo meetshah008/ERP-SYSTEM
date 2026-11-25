@@ -3097,7 +3097,10 @@ exports.getAttendanceMasters = async (req, res) => {
 
     const [statuses] = await db.query('SELECT * FROM att_master_status WHERE company_id = ? ORDER BY id ASC', [companyId]);
     const [shifts] = await db.query('SELECT * FROM att_master_shift WHERE company_id = ? ORDER BY id ASC', [companyId]);
-    const [holidays] = await db.query('SELECT id, company_id, holiday_name, DATE_FORMAT(holiday_date, "%Y-%m-%d") AS holiday_date, holiday_type FROM att_master_holiday WHERE company_id = ? ORDER BY holiday_date ASC', [companyId]);
+    const [holidays] = await db.query(
+      "SELECT id, company_id, holiday_name, DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday_date, holiday_type FROM att_master_holiday WHERE company_id = ? ORDER BY holiday_date ASC",
+      [companyId]
+    );
     const [weeklyOffs] = await db.query('SELECT * FROM att_master_weekly_off WHERE company_id = ? ORDER BY id ASC', [companyId]);
     const [leaveTypes] = await db.query('SELECT * FROM att_master_leave_type WHERE company_id = ? ORDER BY id ASC', [companyId]);
     const [devices] = await db.query('SELECT * FROM att_master_device WHERE company_id = ? ORDER BY id ASC', [companyId]);
@@ -3180,7 +3183,7 @@ exports.bulkAddHolidays = async (req, res) => {
     }
 
     const [existing] = await db.query(
-      'SELECT DATE_FORMAT(holiday_date, "%Y-%m-%d") AS d FROM att_master_holiday WHERE company_id = ?',
+      "SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS d FROM att_master_holiday WHERE company_id = ?",
       [companyId]
     );
     const existingDates = new Set(existing.map((r) => r.d));
@@ -3230,7 +3233,7 @@ exports.importHolidaysExcel = async (req, res) => {
     const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
 
     const [existing] = await db.query(
-      'SELECT DATE_FORMAT(holiday_date, "%Y-%m-%d") AS d FROM att_master_holiday WHERE company_id = ?',
+      "SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS d FROM att_master_holiday WHERE company_id = ?",
       [companyId]
     );
     const existingDates = new Set(existing.map((r) => r.d));

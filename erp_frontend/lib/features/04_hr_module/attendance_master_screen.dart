@@ -389,7 +389,7 @@ class _AttendanceMasterScreenState extends State<AttendanceMasterScreen> {
                                       label: const Text('Load India Holidays'),
                                     ),
                                     OutlinedButton.icon(
-                                      onPressed: _isImporting ? null : _importFromExcel,
+                                      onPressed: _isImporting ? null : () => _openExcelGuideDialog(cardBg, borderColor, textTitle, textSub),
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: textTitle,
                                         side: BorderSide(color: borderColor),
@@ -545,6 +545,78 @@ class _AttendanceMasterScreenState extends State<AttendanceMasterScreen> {
                 Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textSub, fontSize: 11.5)),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openExcelGuideDialog(Color cardBg, Color borderColor, Color textTitle, Color textSub) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cardBg,
+        title: Text('Import Holidays from Excel / CSV', style: TextStyle(color: textTitle, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Create an Excel (.xlsx / .xls) or CSV (.csv) file with these 3 columns:',
+                style: TextStyle(color: textSub, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: EnterpriseColors.emerald.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Table(
+                  border: TableBorder.all(color: borderColor, width: 0.8),
+                  children: [
+                    TableRow(
+                      decoration: BoxDecoration(color: EnterpriseColors.emerald.withValues(alpha: 0.12)),
+                      children: [
+                        Padding(padding: const EdgeInsets.all(6), child: Text('Holiday Name', style: TextStyle(color: textTitle, fontWeight: FontWeight.bold, fontSize: 12))),
+                        Padding(padding: const EdgeInsets.all(6), child: Text('Date', style: TextStyle(color: textTitle, fontWeight: FontWeight.bold, fontSize: 12))),
+                        Padding(padding: const EdgeInsets.all(6), child: Text('Type', style: TextStyle(color: textTitle, fontWeight: FontWeight.bold, fontSize: 12))),
+                      ],
+                    ),
+                    TableRow(children: [
+                      Padding(padding: const EdgeInsets.all(6), child: Text('Republic Day', style: TextStyle(color: textSub, fontSize: 12))),
+                      Padding(padding: const EdgeInsets.all(6), child: Text('2026-01-26', style: TextStyle(color: textSub, fontSize: 12))),
+                      Padding(padding: const EdgeInsets.all(6), child: Text('National Holiday', style: TextStyle(color: textSub, fontSize: 12))),
+                    ]),
+                    TableRow(children: [
+                      Padding(padding: const EdgeInsets.all(6), child: Text('Diwali', style: TextStyle(color: textSub, fontSize: 12))),
+                      Padding(padding: const EdgeInsets.all(6), child: Text('08/11/2026', style: TextStyle(color: textSub, fontSize: 12))),
+                      Padding(padding: const EdgeInsets.all(6), child: Text('Public Holiday', style: TextStyle(color: textSub, fontSize: 12))),
+                    ]),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '• Supported Date Formats: YYYY-MM-DD, DD/MM/YYYY, or standard Excel Date cells.\n• Duplicate dates for the same company are automatically skipped.',
+                style: TextStyle(color: textSub, fontSize: 11.5),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: EnterpriseColors.emerald, foregroundColor: Colors.white),
+            icon: const Icon(Icons.upload_file_rounded, size: 17),
+            label: const Text('Choose Excel / CSV File'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _importFromExcel();
+            },
           ),
         ],
       ),
