@@ -743,8 +743,18 @@ async function testConnection() {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
               `);
               try {
-                await connection.query(`ALTER TABLE EMPLOYEE ADD COLUMN hr_category_id INT NULL AFTER department_id`);
-              } catch (_) {}
+                await connection.query(`ALTER TABLE employee ADD COLUMN hr_category_id INT NULL`);
+              } catch (e) {
+                if (e.code !== 'ER_DUP_FIELDNAME') {
+                  try {
+                    await connection.query(`ALTER TABLE EMPLOYEE ADD COLUMN hr_category_id INT NULL`);
+                  } catch (e2) {
+                    if (e2.code !== 'ER_DUP_FIELDNAME') {
+                      console.error('hr_category_id migration warning:', e2.message);
+                    }
+                  }
+                }
+              }
 
                 await connection.query(`
                   CREATE TABLE IF NOT EXISTS salary_template_items (
