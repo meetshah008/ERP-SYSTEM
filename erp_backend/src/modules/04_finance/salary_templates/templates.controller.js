@@ -288,7 +288,8 @@ exports.getSalaryStructures = async (req, res) => {
     );
     return res.status(200).json({ success: true, data: employees });
   } catch (err) {
-    return fail(res, err, 'getSalaryStructures');
+    console.error('getSalaryStructures error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to load salary structures.', error: err.message });
   }
 };
 

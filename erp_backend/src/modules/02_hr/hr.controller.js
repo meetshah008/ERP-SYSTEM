@@ -3468,7 +3468,7 @@ exports.getHrCategories = async (req, res) => {
     return res.status(200).json({ success: true, data: rows });
   } catch (err) {
     console.error('getHrCategories error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to load HR categories.' });
+    return res.status(500).json({ success: false, message: 'Failed to load HR categories.', error: err.message });
   }
 };
 
