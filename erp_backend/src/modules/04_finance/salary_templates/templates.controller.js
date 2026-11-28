@@ -266,27 +266,51 @@ exports.getSalaryStructures = async (req, res) => {
   const companyId = companyIdOf(req);
   try {
     await ensureDefaultTemplates(companyId);
-    const [employees] = await db.query(
-      `SELECT e.employee_id, e.emp_code, e.full_name, e.designation, e.status,
-              DATE_FORMAT(e.join_date, '%Y-%m-%d') AS join_date,
-              e.salary_base, e.bank_name, e.bank_account_no, e.bank_ifsc, e.pan_no, e.pf_uan, e.esi_no,
-              e.hr_category_id, hc.category_name AS hr_category_name, hc.category_code AS hr_category_code,
-              d.name AS department_name,
-              s.structure_id, s.template_id, t.template_name, s.salary_type, s.base_pay, s.gross_monthly,
-              DATE_FORMAT(s.effective_from, '%Y-%m-%d') AS effective_from,
-              s.pf_applicable, s.esi_applicable, s.pt_applicable, s.tds_monthly
-       FROM EMPLOYEE e
-       LEFT JOIN DEPARTMENT d ON d.department_id = e.department_id
-       LEFT JOIN hr_categories hc ON hc.category_id = e.hr_category_id AND hc.company_id = e.company_id
-       LEFT JOIN employee_salary_structures s
-         ON s.employee_id = e.employee_id AND s.company_id = e.company_id AND s.is_current = 1
-       LEFT JOIN salary_templates t
-         ON t.template_id = s.template_id
-       WHERE e.company_id = ? AND LOWER(COALESCE(e.status, 'active')) = 'active'
-       ORDER BY e.full_name ASC`,
-      [companyId]
-    );
-    return res.status(200).json({ success: true, data: employees });
+    try {
+      const [employees] = await db.query(
+        `SELECT e.employee_id, e.emp_code, e.full_name, e.designation, e.status,
+                DATE_FORMAT(e.join_date, '%Y-%m-%d') AS join_date,
+                e.salary_base, e.bank_name, e.bank_account_no, e.bank_ifsc, e.pan_no, e.pf_uan, e.esi_no,
+                e.hr_category_id, hc.category_name AS hr_category_name, hc.category_code AS hr_category_code,
+                d.name AS department_name,
+                s.structure_id, s.template_id, t.template_name, s.salary_type, s.base_pay, s.gross_monthly,
+                DATE_FORMAT(s.effective_from, '%Y-%m-%d') AS effective_from,
+                s.pf_applicable, s.esi_applicable, s.pt_applicable, s.tds_monthly
+         FROM EMPLOYEE e
+         LEFT JOIN DEPARTMENT d ON d.department_id = e.department_id
+         LEFT JOIN hr_categories hc ON hc.category_id = e.hr_category_id AND hc.company_id = e.company_id
+         LEFT JOIN employee_salary_structures s
+           ON s.employee_id = e.employee_id AND s.company_id = e.company_id AND s.is_current = 1
+         LEFT JOIN salary_templates t
+           ON t.template_id = s.template_id
+         WHERE e.company_id = ? AND LOWER(COALESCE(e.status, 'active')) = 'active'
+         ORDER BY e.full_name ASC`,
+        [companyId]
+      );
+      return res.status(200).json({ success: true, data: employees });
+    } catch (queryErr) {
+      if (queryErr.code !== 'ER_BAD_FIELD_ERROR') throw queryErr;
+      const [employees] = await db.query(
+        `SELECT e.employee_id, e.emp_code, e.full_name, e.designation, e.status,
+                DATE_FORMAT(e.join_date, '%Y-%m-%d') AS join_date,
+                e.salary_base, NULL AS bank_name, NULL AS bank_account_no, NULL AS bank_ifsc, NULL AS pan_no, NULL AS pf_uan, NULL AS esi_no,
+                NULL AS hr_category_id, NULL AS hr_category_name, NULL AS hr_category_code,
+                d.name AS department_name,
+                s.structure_id, s.template_id, t.template_name, s.salary_type, s.base_pay, s.gross_monthly,
+                DATE_FORMAT(s.effective_from, '%Y-%m-%d') AS effective_from,
+                s.pf_applicable, s.esi_applicable, s.pt_applicable, s.tds_monthly
+         FROM EMPLOYEE e
+         LEFT JOIN DEPARTMENT d ON d.department_id = e.department_id
+         LEFT JOIN employee_salary_structures s
+           ON s.employee_id = e.employee_id AND s.company_id = e.company_id AND s.is_current = 1
+         LEFT JOIN salary_templates t
+           ON t.template_id = s.template_id
+         WHERE e.company_id = ? AND LOWER(COALESCE(e.status, 'active')) = 'active'
+         ORDER BY e.full_name ASC`,
+        [companyId]
+      );
+      return res.status(200).json({ success: true, data: employees });
+    }
   } catch (err) {
     console.error('getSalaryStructures error:', err);
     return res.status(500).json({ success: false, message: 'Failed to load salary structures.', error: err.message });

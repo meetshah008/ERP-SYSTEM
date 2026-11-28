@@ -483,7 +483,11 @@ async function testConnection() {
                          for (const alterSql of payrollEmpColumns) {
                            try {
                              await connection.query(alterSql);
-                           } catch (_) {}
+                           } catch (e) {
+                             if (e.code !== 'ER_DUP_FIELDNAME') {
+                               console.error('EMPLOYEE alter warning:', e.message);
+                             }
+                           }
                          }
 
                          // Payroll & Salary Module Tables (DECIMAL(15,2) only, never FLOAT)

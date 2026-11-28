@@ -3464,8 +3464,32 @@ exports.getHrCategories = async (req, res) => {
     }
 
     sql += ' GROUP BY c.category_id ORDER BY c.category_name ASC';
-    const [rows] = await db.query(sql, params);
-    return res.status(200).json({ success: true, data: rows });
+    try {
+      const [rows] = await db.query(sql, params);
+      return res.status(200).json({ success: true, data: rows });
+    } catch (queryErr) {
+      if (queryErr.code !== 'ER_BAD_FIELD_ERROR') throw queryErr;
+      let fallbackSql = `
+        SELECT c.category_id, c.company_id, c.category_name, c.category_code,
+               c.description, c.default_template_id, c.default_gross,
+               MAX(t.template_name) AS default_template_name,
+               c.is_active, c.created_at, c.updated_at,
+               0 AS employee_count
+        FROM hr_categories c
+        LEFT JOIN salary_templates t
+          ON t.template_id = c.default_template_id AND t.company_id = c.company_id
+        WHERE c.company_id = ?`;
+      const fbParams = [companyId];
+      if (status === 'ACTIVE') fallbackSql += ' AND c.is_active = 1';
+      else if (status === 'INACTIVE') fallbackSql += ' AND c.is_active = 0';
+      if (search) {
+        fallbackSql += ' AND (c.category_name LIKE ? OR c.category_code LIKE ?)';
+        fbParams.push(`%${search}%`, `%${search}%`);
+      }
+      fallbackSql += ' GROUP BY c.category_id ORDER BY c.category_name ASC';
+      const [rows] = await db.query(fallbackSql, fbParams);
+      return res.status(200).json({ success: true, data: rows });
+    }
   } catch (err) {
     console.error('getHrCategories error:', err);
     return res.status(500).json({ success: false, message: 'Failed to load HR categories.', error: err.message });
