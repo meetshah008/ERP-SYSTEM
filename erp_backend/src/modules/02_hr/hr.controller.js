@@ -400,9 +400,14 @@ exports.getEmployees = async (req, res) => {
       );
       employees = rows;
     } catch (_) {
+      try {
+        await db.query('ALTER TABLE employee ADD COLUMN hr_category_id INT NULL');
+      } catch (__) {
+        try { await db.query('ALTER TABLE EMPLOYEE ADD COLUMN hr_category_id INT NULL'); } catch (___) {}
+      }
       const [rows] = await db.query(
         `SELECT e.employee_id, e.user_id, e.emp_code, e.biometric_emp_code, e.full_name, e.designation, e.status,
-                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.hr_category_id, e.branch_id, e.company_id,
+                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, NULL AS hr_category_id, e.branch_id, e.company_id,
                 e.salary_base, e.salary_grade,
                 COALESCE(r.name, 'Employee') AS role_name,
                 d.name as department_name, b.name as branch_name
@@ -3395,8 +3400,10 @@ async function ensureHrCategoriesSetup(companyId) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   try {
-    await db.query('ALTER TABLE EMPLOYEE ADD COLUMN hr_category_id INT NULL AFTER department_id');
-  } catch (_) {}
+    await db.query('ALTER TABLE employee ADD COLUMN hr_category_id INT NULL');
+  } catch (_) {
+    try { await db.query('ALTER TABLE EMPLOYEE ADD COLUMN hr_category_id INT NULL'); } catch (__) {}
+  }
 
 
     try { await db.query('ALTER TABLE hr_categories ADD COLUMN default_template_id INT NULL AFTER description'); } catch (_) {}
