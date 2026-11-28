@@ -26,6 +26,15 @@ app.use('/api/tasks', taskRoutes);
 const projectRoutes = require('./modules/03_tasks/project.routes');
 app.use('/api/projects', projectRoutes);
 
+const financeRoutes = require('./modules/04_finance/accounting/finance.routes');
+app.use('/api/finance', financeRoutes);
+
+const salaryComponentRoutes = require('./modules/04_finance/salary_components/components.routes');
+app.use('/api/payroll/components', salaryComponentRoutes);
+
+const salaryTemplateRoutes = require('./modules/04_finance/salary_templates/templates.routes');
+app.use('/api/payroll', salaryTemplateRoutes);
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'UP', message: 'Manufacturing ERP Backend Server is running smoothly!' });

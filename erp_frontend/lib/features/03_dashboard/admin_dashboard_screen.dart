@@ -27,6 +27,10 @@ import '../../core/widgets/permission_sidebar.dart';
 import '../../core/theme/enterprise_theme.dart';
 import '../04_hr_module/attendance_settings_screen.dart';
 import '../04_hr_module/attendance_master_screen.dart';
+import '../06_finance/finance_screen.dart';
+import '../06_finance/finance_hub_screen.dart';
+import '../06_finance/salary_templates/salary_templates_screen.dart';
+import '../04_hr_module/hr_category_master_screen.dart';
 /// Dashboard cards are a company-wide overview, so they never send
 /// role/employee narrowing filters. Those filters belong to the detailed
 /// Projects/Tasks screens; sending them here made every non-admin role's
@@ -890,7 +894,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                   isDesktop ? 22.0 : (isDashboard ? 0.0 : 16.0),
                                   isDesktop ? 22.0 : (isMobileDevice ? 96.0 : 126.0), // <-- ~96px on mobile device
                                 ),
-                                child: _buildSelectedTabContent(isDesktop),
+                                // Finance screen has its own TabBarView, which needs a
+                                // bounded height. Giving it an explicit box prevents the
+                                // infinite-height layout crash (white screen).
+                                child: _selectedMenu == 'Accounts & Finance'
+                                    ? SizedBox(
+                                        height: MediaQuery.of(context).size.height * 0.74,
+                                        child: const FinanceHubScreen()
+                                      )
+                                    : _buildSelectedTabContent(isDesktop),
                               ),
                             ),
                           ),
@@ -1470,10 +1482,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         }
         return _buildPlaceholderView('Production Floor & Bill of Materials', Icons.factory_outlined);
       case 'Accounts & Finance':
-        if (!_hasPermission('finance_view_reports')) {
+        if (!_hasPermission('finance_view_reports') &&
+            !_hasPermission('finance_manage_accounts') &&
+            !_hasPermission('finance_create_voucher')) {
           return _buildAccessDeniedView('Accounts & Finance');
         }
-        return _buildPlaceholderView('Accounts & Invoicing', Icons.account_balance_wallet_outlined);
+        return const FinanceHubScreen();
       case 'Settings & Logs':
         // Reachable by all users so they can switch theme, inspect their workspace, and log out.
         return _buildSettingsAndMoreView();
@@ -4166,6 +4180,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
     }
 
+
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4779,6 +4795,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const AttendanceMasterScreen()),
+                    ),
+                    cardBg: cardBg,
+                    cardBorder: cardBorder,
+                    textTitle: textTitle,
+                    textSub: textSub,
+                    isDark: isDark,
+                  ),
+                // 7. Salary Templates Card (Shared with Accounts & Finance)
+                if (_hasPermission('salary_manage_increment') || _hasPermission('hr_manage_staff'))
+                  _buildHrFeatureCard(
+                    title: 'Salary Templates',
+                    badgeText: 'HR & Accounts',
+                    subtitle: 'Create company salary templates and assign breakup in 1 click.',
+                    icon: Icons.layers_outlined,
+                    color: const Color(0xFF0EA5E9),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SalaryTemplatesScreen()),
+                    ),
+                    cardBg: cardBg,
+                    cardBorder: cardBorder,
+                    textTitle: textTitle,
+                    textSub: textSub,
+                    isDark: isDark,
+                  ),
+                // 8. HR Category Master Card
+                if (_hasPermission('hr_manage_staff') || _hasPermission('hr_manage_departments'))
+                  _buildHrFeatureCard(
+                    title: 'HR Category Master',
+                    badgeText: 'Job Categories',
+                    subtitle: 'Manage role categories like Junior Developer, Senior Developer & Team Leader.',
+                    icon: Icons.badge_outlined,
+                    color: const Color(0xFF0F766E),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HrCategoryMasterScreen()),
                     ),
                     cardBg: cardBg,
                     cardBorder: cardBorder,

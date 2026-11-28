@@ -371,6 +371,7 @@ exports.getEmployees = async (req, res) => {
   try {
     await ensureAdminEmployeeRecords();
     const companyId = resolveCompanyId(req);
+    if (companyId) await ensureHrCategoriesSetup(companyId).catch(() => {});
     let whereClause = '';
     const params = [];
     if (companyId) {
@@ -384,7 +385,7 @@ exports.getEmployees = async (req, res) => {
     try {
       const [rows] = await db.query(
         `SELECT e.employee_id, e.user_id, e.emp_code, e.biometric_emp_code, e.full_name, e.designation, e.status,
-                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.branch_id, e.company_id,
+                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.hr_category_id, e.branch_id, e.company_id,
                 e.salary_base, e.salary_grade,
                 COALESCE(r.name, e.role, 'Employee') AS role_name,
                 d.name as department_name, b.name as branch_name
@@ -401,7 +402,7 @@ exports.getEmployees = async (req, res) => {
     } catch (_) {
       const [rows] = await db.query(
         `SELECT e.employee_id, e.user_id, e.emp_code, e.biometric_emp_code, e.full_name, e.designation, e.status,
-                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.branch_id, e.company_id,
+                e.phone, e.email, e.exit_date, e.exit_reason, e.department_id, e.hr_category_id, e.branch_id, e.company_id,
                 e.salary_base, e.salary_grade,
                 COALESCE(r.name, 'Employee') AS role_name,
                 d.name as department_name, b.name as branch_name
@@ -2610,7 +2611,82 @@ exports.createIncrement = async (req, res) => {
     updateParams.push(employee_id);
 
     await db.query(updateSql, updateParams);
+        // Sync active Salary Template / Structure with the revised salary
+        try {
+          const [curStructs] = await db.query(
+            `SELECT s.*, t.basic_percent, t.hra_percent, t.conveyance_fixed, t.custom_allowances_json, t.template_name
+             FROM employee_salary_structures s
+             LEFT JOIN salary_templates t ON t.template_id = s.template_id
+             WHERE s.employee_id = ? AND s.is_current = 1
+             ORDER BY s.structure_id DESC LIMIT 1`,
+            [employee_id]
+          );
 
+          if (curStructs.length > 0) {
+            const cur = curStructs[0];
+            const compId = cur.company_id || company_id || 1;
+            const basicPct = cur.template_id ? (parseFloat(cur.basic_percent) || 50) : 50;
+            const hraPct = cur.template_id ? (parseFloat(cur.hra_percent) || 40) : 40;
+            const convFixed = cur.template_id ? (parseFloat(cur.conveyance_fixed) || 1600) : 1600;
+
+            const newBasic = Math.round(((revSal * basicPct) / 100) * 100) / 100;
+            const newHra = Math.round(((newBasic * hraPct) / 100) * 100) / 100;
+            const newConv = Math.min(convFixed, Math.max(0, revSal - newBasic - newHra));
+            const newSpecial = Math.max(0, Math.round((revSal - newBasic - newHra - newConv) * 100) / 100);
+
+            await db.query(
+              `UPDATE employee_salary_structures
+               SET is_current = 0, effective_to = DATE_SUB(?, INTERVAL 1 DAY)
+               WHERE structure_id = ?`,
+              [effective_date, cur.structure_id]
+            );
+
+            const [newSt] = await db.query(
+              `INSERT INTO employee_salary_structures
+                (company_id, employee_id, template_id, salary_type, base_pay, gross_monthly, effective_from, is_current,
+                 pf_applicable, esi_applicable, pt_applicable, tds_monthly, notes, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+              [
+                compId,
+                employee_id,
+                cur.template_id || null,
+                cur.salary_type || 'MONTHLY',
+                newBasic,
+                revSal,
+                effective_date,
+                cur.pf_applicable ?? 1,
+                cur.esi_applicable ?? 1,
+                cur.pt_applicable ?? 1,
+                cur.tds_monthly || 0,
+                `Auto-revised via Salary Increment (${cur.template_name || 'Custom'})`,
+                approved_by || 1
+              ]
+            );
+
+            const [compRows] = await db.query(
+              'SELECT component_id, code FROM salary_components WHERE company_id = ?',
+              [compId]
+            );
+            const compMap = Object.fromEntries(compRows.map((c) => [c.code, c.component_id]));
+            const items = [
+              [compMap.BASIC, 'FIXED', newBasic, newBasic],
+              [compMap.HRA, 'PERCENT_OF_BASIC', hraPct, newHra],
+              [compMap.CONV, 'FIXED', newConv, newConv],
+              [compMap.SPECIAL, 'FIXED', newSpecial, newSpecial]
+            ];
+            for (const [cid, mode, val, comp] of items) {
+              if (!cid || comp <= 0) continue;
+              await db.query(
+                `INSERT INTO employee_salary_structure_items
+                  (company_id, structure_id, component_id, calc_mode, amount_or_percent, computed_amount, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [compId, newSt.insertId, cid, mode, val, comp, approved_by || 1]
+              );
+            }
+          }
+        } catch (syncErr) {
+          console.error('Salary template sync on increment failed:', syncErr.message);
+        }
     // Send notification to employee
     try {
       const [empRows] = await db.query('SELECT user_id, full_name, company_id FROM EMPLOYEE WHERE employee_id = ?', [employee_id]);
@@ -3296,5 +3372,307 @@ exports.importHolidaysExcel = async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
+  }
+};
+// ==========================================
+// HR CATEGORY MASTER
+// ==========================================
+
+async function ensureHrCategoriesSetup(companyId) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS hr_categories (
+      category_id INT AUTO_INCREMENT PRIMARY KEY,
+      company_id INT NOT NULL,
+      category_name VARCHAR(100) NOT NULL,
+      category_code VARCHAR(30) NOT NULL,
+      description VARCHAR(255) NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_hrcat_company_code (company_id, category_code),
+      INDEX idx_hrcat_company_active (company_id, is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  try {
+    await db.query('ALTER TABLE EMPLOYEE ADD COLUMN hr_category_id INT NULL AFTER department_id');
+  } catch (_) {}
+
+
+    try { await db.query('ALTER TABLE hr_categories ADD COLUMN default_template_id INT NULL AFTER description'); } catch (_) {}
+    try { await db.query('ALTER TABLE hr_categories ADD COLUMN default_gross DECIMAL(15,2) NULL AFTER default_template_id'); } catch (_) {}
+
+
+  const [cnt] = await db.query('SELECT COUNT(*) AS cnt FROM hr_categories WHERE company_id = ?', [companyId]);
+  if (Number(cnt[0]?.cnt || 0) === 0) {
+    const defaults = [
+      ['Junior Developer', 'CAT-JD', 'Entry-level software developer'],
+      ['Senior Developer', 'CAT-SD', 'Experienced software developer'],
+      ['Team Leader', 'CAT-TL', 'Team leadership & delivery role'],
+      ['Senior Accountant', 'CAT-SA', 'Senior finance & accounting role'],
+      ['Finance Manager', 'CAT-FM', 'Finance department management role']
+    ];
+    for (const [name, code, desc] of defaults) {
+      await db.query(
+        `INSERT IGNORE INTO hr_categories (company_id, category_name, category_code, description, is_active)
+         VALUES (?, ?, ?, ?, 1)`,
+        [companyId, name, code, desc]
+      );
+    }
+  }
+}
+
+exports.getHrCategories = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    await ensureHrCategoriesSetup(companyId);
+
+    const search = String(req.query.search || '').trim();
+    const status = String(req.query.status || 'ALL').trim().toUpperCase();
+
+       let sql = `
+         SELECT c.category_id, c.company_id, c.category_name, c.category_code,
+                c.description, c.default_template_id, c.default_gross,
+                t.template_name AS default_template_name,
+                c.is_active, c.created_at, c.updated_at,
+                COUNT(e.employee_id) AS employee_count
+         FROM hr_categories c
+         LEFT JOIN salary_templates t
+           ON t.template_id = c.default_template_id AND t.company_id = c.company_id
+         LEFT JOIN EMPLOYEE e
+           ON e.hr_category_id = c.category_id
+          AND e.company_id = c.company_id
+          AND LOWER(COALESCE(e.status, 'active')) = 'active'
+         WHERE c.company_id = ?`;
+    const params = [companyId];
+
+    if (status === 'ACTIVE') {
+      sql += ' AND c.is_active = 1';
+    } else if (status === 'INACTIVE') {
+      sql += ' AND c.is_active = 0';
+    }
+    if (search) {
+      sql += ' AND (c.category_name LIKE ? OR c.category_code LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    sql += ' GROUP BY c.category_id ORDER BY c.category_name ASC';
+    const [rows] = await db.query(sql, params);
+    return res.status(200).json({ success: true, data: rows });
+  } catch (err) {
+    console.error('getHrCategories error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to load HR categories.' });
+  }
+};
+
+exports.createHrCategory = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    await ensureHrCategoriesSetup(companyId);
+
+        const {
+          category_name,
+          category_code,
+          description = '',
+          default_template_id = null,
+          default_gross = null,
+          is_active = true
+        } = req.body || {};
+        const tplId = default_template_id ? parseInt(default_template_id, 10) || null : null;
+        const defGross = (default_gross !== null && default_gross !== '' && !Number.isNaN(Number(default_gross)))
+          ? Number(default_gross)
+          : null;
+    const cleanName = String(category_name || '').trim();
+    const cleanCode = String(category_code || '').trim().toUpperCase();
+
+    if (!cleanName) {
+      return res.status(400).json({ success: false, message: 'Category Name is required.' });
+    }
+    if (!cleanCode) {
+      return res.status(400).json({ success: false, message: 'Category Code is required.' });
+    }
+
+    const [dup] = await db.query(
+      'SELECT category_id FROM hr_categories WHERE company_id = ? AND category_code = ? LIMIT 1',
+      [companyId, cleanCode]
+    );
+    if (dup.length) {
+      return res.status(409).json({ success: false, message: `Category Code "${cleanCode}" already exists.` });
+    }
+
+    const userId = req.user && req.user.userId ? req.user.userId : null;
+    const [result] = await db.query(
+         `INSERT INTO hr_categories (company_id, category_name, category_code, description, default_template_id, default_gross, is_active, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         [companyId, cleanName, cleanCode, String(description || '').trim() || null, tplId, defGross, is_active ? 1 : 0, userId]
+     );
+    return res.status(201).json({
+      success: true,
+      message: 'HR Category created successfully!',
+      category_id: result.insertId
+    });
+  } catch (err) {
+    console.error('createHrCategory error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create HR category.' });
+  }
+};
+
+exports.updateHrCategory = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const id = parseInt(req.params.id, 10);
+    const {
+        category_name,
+        category_code,
+        description = '',
+        default_template_id = null,
+        default_gross = null,
+        is_active = true
+      } = req.body || {};
+    const tplId = default_template_id ? parseInt(default_template_id, 10) || null : null;
+    const defGross = (default_gross !== null && default_gross !== '' && !Number.isNaN(Number(default_gross)))
+        ? Number(default_gross)
+        : null;
+    const cleanName = String(category_name || '').trim();
+    const cleanCode = String(category_code || '').trim().toUpperCase();
+
+    if (!cleanName) {
+      return res.status(400).json({ success: false, message: 'Category Name is required.' });
+    }
+    if (!cleanCode) {
+      return res.status(400).json({ success: false, message: 'Category Code is required.' });
+    }
+
+    const [dup] = await db.query(
+      'SELECT category_id FROM hr_categories WHERE company_id = ? AND category_code = ? AND category_id != ? LIMIT 1',
+      [companyId, cleanCode, id]
+    );
+    if (dup.length) {
+      return res.status(409).json({ success: false, message: `Category Code "${cleanCode}" already exists.` });
+    }
+
+    const [result] = await db.query(
+         `UPDATE hr_categories
+          SET category_name = ?, category_code = ?, description = ?, default_template_id = ?, default_gross = ?, is_active = ?
+          WHERE category_id = ? AND company_id = ?`,
+         [cleanName, cleanCode, String(description || '').trim() || null, tplId, defGross, is_active ? 1 : 0, id, companyId]
+    );
+    if (!result.affectedRows) {
+      return res.status(404).json({ success: false, message: 'HR Category not found.' });
+    }
+    return res.status(200).json({ success: true, message: 'HR Category updated successfully!' });
+  } catch (err) {
+    console.error('updateHrCategory error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update HR category.' });
+  }
+};
+
+exports.deleteHrCategory = async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    const id = parseInt(req.params.id, 10);
+    const deactivateOnly = req.query.deactivate === 'true' || (req.body && req.body.deactivate === true);
+
+    const [existing] = await db.query(
+      'SELECT category_id, category_name FROM hr_categories WHERE category_id = ? AND company_id = ? LIMIT 1',
+      [id, companyId]
+    );
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'HR Category not found.' });
+    }
+
+    const [activeEmps] = await db.query(
+      `SELECT COUNT(*) AS cnt FROM EMPLOYEE
+       WHERE company_id = ? AND hr_category_id = ? AND LOWER(COALESCE(status, 'active')) = 'active'`,
+      [companyId, id]
+    );
+    const empCount = Number(activeEmps[0]?.cnt || 0);
+
+    if (empCount > 0) {
+      if (deactivateOnly) {
+        await db.query(
+          'UPDATE hr_categories SET is_active = 0 WHERE category_id = ? AND company_id = ?',
+          [id, companyId]
+        );
+        return res.status(200).json({
+          success: true,
+          deactivated: true,
+          message: `"${existing[0].category_name}" deactivated (${empCount} employees remain assigned).`
+        });
+      }
+      return res.status(409).json({
+        success: false,
+        canDeactivate: true,
+        employee_count: empCount,
+        message: `Cannot delete "${existing[0].category_name}" because ${empCount} active employee(s) are assigned to it. You can deactivate it instead.`
+      });
+    }
+
+    // Clear historical inactive/terminated references without deleting any employee records
+    await db.query(
+      'UPDATE EMPLOYEE SET hr_category_id = NULL WHERE company_id = ? AND hr_category_id = ?',
+      [companyId, id]
+    );
+    await db.query(
+      'DELETE FROM hr_categories WHERE category_id = ? AND company_id = ?',
+      [id, companyId]
+    );
+    return res.status(200).json({
+      success: true,
+      deactivated: false,
+      message: `"${existing[0].category_name}" deleted permanently!`
+    });
+  } catch (err) {
+    console.error('deleteHrCategory error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to delete HR category.' });
+  }
+};
+
+exports.assignCategoryMembers = async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const companyId = resolveCompanyId(req) || 1;
+    await ensureHrCategoriesSetup(companyId);
+    const categoryId = parseInt(req.params.id, 10);
+    if (!categoryId) {
+      return res.status(400).json({ success: false, message: 'Valid category ID is required.' });
+    }
+
+    const [catRows] = await conn.query(
+      'SELECT category_id, category_name FROM hr_categories WHERE category_id = ? AND company_id = ? LIMIT 1',
+      [categoryId, companyId]
+    );
+    if (!catRows.length) {
+      return res.status(404).json({ success: false, message: 'HR Category not found.' });
+    }
+
+    const rawIds = Array.isArray(req.body?.employee_ids) ? req.body.employee_ids : [];
+    const empIds = [...new Set(rawIds.map((id) => parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0))];
+
+    await conn.beginTransaction();
+    await conn.query(
+      'UPDATE EMPLOYEE SET hr_category_id = NULL WHERE company_id = ? AND hr_category_id = ?',
+      [companyId, categoryId]
+    );
+    if (empIds.length > 0) {
+      const placeholders = empIds.map(() => '?').join(',');
+      await conn.query(
+        `UPDATE EMPLOYEE SET hr_category_id = ? WHERE company_id = ? AND employee_id IN (${placeholders})`,
+        [categoryId, companyId, ...empIds]
+      );
+    }
+    await conn.commit();
+
+    return res.status(200).json({
+      success: true,
+      assigned_count: empIds.length,
+      message: `Assigned ${empIds.length} member(s) to "${catRows[0].category_name}"!`
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('assignCategoryMembers error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to assign category members.' });
+  } finally {
+    conn.release();
   }
 };

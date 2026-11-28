@@ -37,7 +37,18 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
       manufacturing_view_bom: true,
       manufacturing_work_orders: true,
       finance_view_reports: true,
+      finance_manage_accounts: true,
+      finance_create_voucher: true,
+      finance_manage_bills: true,
+      finance_manage_invoices: true,
+      finance_record_payment: true,
+      finance_close_fy: true,
       salary_manage_increment: true,
+      payroll_view: true,
+      payroll_manage: true,
+      payroll_approve: true,
+      payroll_pay: true,
+      payslip_view_self: true,
       system_audit_logs: true
     };
   }
@@ -99,7 +110,18 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
 
       // Finance & Appraisal Module:
       finance_view_reports: isFinance,
+      finance_manage_accounts: isFinance,
+      finance_create_voucher: isFinance,
+      finance_manage_bills: isFinance,
+      finance_manage_invoices: isFinance,
+      finance_record_payment: isFinance,
+      finance_close_fy: false, // Super Admin only
       salary_manage_increment: isFinance,
+      payroll_view: isFinance || isHR,
+      payroll_manage: isFinance || isHR,
+      payroll_approve: isFinance,
+      payroll_pay: isFinance,
+      payslip_view_self: true,
 
       // System Security
       system_audit_logs: false
@@ -134,7 +156,18 @@ function getDefaultPermissions(roleName = 'Employee', deptName = '', managerModu
     manufacturing_view_bom: false,
     manufacturing_work_orders: false,
     finance_view_reports: false,
+    finance_manage_accounts: false,
+    finance_create_voucher: false,
+    finance_manage_bills: false,
+    finance_manage_invoices: false,
+    finance_record_payment: false,
+    finance_close_fy: false,
     salary_manage_increment: false,
+    payroll_view: false,
+    payroll_manage: false,
+    payroll_approve: false,
+    payroll_pay: false,
+    payslip_view_self: true,
     system_audit_logs: false
   };
 }

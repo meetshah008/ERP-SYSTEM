@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
@@ -39,7 +40,13 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
   }
 
   Future<void> _submitSetup() async {
-    if (!_formKey.currentState!.validate()) return;
+    final formState = _formKey.currentState;
+    if (formState == null || !formState.validate()) {
+      setState(() {
+        _errorMessage = 'Please fix the highlighted fields before submitting.';
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -368,6 +375,7 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
 Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
   return Form(
     key: _formKey,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -423,7 +431,18 @@ Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
             hint: 'Your name (Admin Full Name)',
             icon: Icons.person_outline,
             isDark: isDark,
-            validator: (v) => v!.trim().isEmpty ? 'Admin name is required' : null,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\s.\-']")),
+            ],
+            validator: (v) {
+              final val = (v ?? '').trim();
+              if (val.isEmpty) return 'Admin name is required';
+              if (val.length < 2) return 'Name must be at least 2 characters';
+              if (!RegExp(r"^[a-zA-Z][a-zA-Z\s.\-']{1,59}$").hasMatch(val)) {
+                return 'Enter a valid name (letters only)';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 14),
 
@@ -434,7 +453,14 @@ Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
             icon: Icons.email_outlined,
             isDark: isDark,
             keyboardType: TextInputType.emailAddress,
-            validator: (v) => v!.trim().isEmpty ? 'Valid official email required' : null,
+            validator: (v) {
+              final val = (v ?? '').trim();
+              if (val.isEmpty) return 'Official email is required';
+              if (!RegExp(r'^[\w.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}$').hasMatch(val)) {
+                return 'Enter a valid email (e.g. name@company.com)';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 14),
 
@@ -444,12 +470,24 @@ Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
             hint: 'Company Legal Name (e.g. Apex Mfg Ltd)',
             icon: Icons.business,
             isDark: isDark,
-            validator: (v) => v!.trim().isEmpty ? 'Company name required' : null,
+            validator: (v) {
+              final val = (v ?? '').trim();
+              if (val.isEmpty) return 'Company name is required';
+              if (val.length < 2) return 'Company name is too short';
+              if (!RegExp(r'[a-zA-Z]').hasMatch(val)) {
+                return 'Company name must contain letters';
+              }
+              if (!RegExp(r"^[a-zA-Z0-9\s&.,'\-()]+$").hasMatch(val)) {
+                return 'Invalid characters in company name';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 14),
 
           // Company Code & Tax ID (Row)
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 flex: 5,
@@ -469,6 +507,16 @@ Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
                   hint: 'GST / Tax ID (Optional)',
                   icon: Icons.receipt_long_outlined,
                   isDark: isDark,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\-]')),
+                    LengthLimitingTextInputFormatter(20),
+                  ],
+                  validator: (v) {
+                    final val = (v ?? '').trim();
+                    if (val.isEmpty) return null;
+                    if (val.length < 5) return 'Min 5 characters';
+                    return null;
+                  },
                 ),
               ),
             ],
@@ -490,7 +538,12 @@ Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
               ),
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
-            validator: (v) => v!.length < 6 ? 'Minimum 6 characters' : null,
+            validator: (v) {
+              final val = (v ?? '').trim();
+              if (val.isEmpty) return 'Password is required';
+              if (val.length < 6) return 'Minimum 6 characters';
+              return null;
+            },
           ),
           const SizedBox(height: 22),
 
@@ -571,12 +624,14 @@ Widget _buildFormContent({required bool isDark, bool isMobile = false}) {
     bool isPassword = false,
     Widget? suffixIcon,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: isPassword,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       validator: validator,
       style: TextStyle(
         color: isDark ? Colors.white : const Color(0xFF0F172A),

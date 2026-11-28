@@ -8,7 +8,7 @@ import '../../core/widgets/botanical_background.dart';
 import '../../core/network/session_manager.dart';
 import 'task_form_screen.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:web/web.dart' as web; // Web par direct file download ke liye
+import '../../core/utils/web_open_helper.dart';
 
 class TaskDetailsScreen extends StatefulWidget {
   final dynamic taskId;
@@ -368,7 +368,7 @@ class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
       } catch (_) {}
     }
     if (kIsWeb) {
-      web.window.open(url, '_blank');
+      openUrlInNewTab(url);
     }
   }
 

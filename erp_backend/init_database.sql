@@ -131,3 +131,212 @@ CREATE TABLE IF NOT EXISTS `ATTENDANCE` (
   FOREIGN KEY (`employee_id`) REFERENCES `EMPLOYEE`(`employee_id`) ON DELETE CASCADE,
   FOREIGN KEY (`import_id`) REFERENCES `ATTENDANCE_IMPORT`(`import_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+-- ============================================================
+-- ACCOUNTS & FINANCE (module 04). The same DDL is also applied
+-- automatically on server boot by src/config/db.js.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `finance_financial_year` (
+  `fy_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `fy_name` VARCHAR(30) NOT NULL,
+  `start_date` DATE NOT NULL,
+  `end_date` DATE NOT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `is_closed` TINYINT(1) NOT NULL DEFAULT 0,
+  UNIQUE KEY `uk_fy_company_name` (`company_id`, `fy_name`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_account` (
+  `account_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `account_code` VARCHAR(20) NOT NULL,
+  `account_name` VARCHAR(120) NOT NULL,
+  `account_type` ENUM('Asset','Liability','Equity','Income','Expense') NOT NULL,
+  `sub_group` VARCHAR(80) DEFAULT 'General',
+  `opening_balance` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `current_balance` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_fa_company_code` (`company_id`, `account_code`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_voucher` (
+  `voucher_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `voucher_no` VARCHAR(40) NOT NULL,
+  `voucher_type` ENUM('Payment','Receipt','Journal','Contra','Sales','Purchase') NOT NULL,
+  `voucher_date` DATE NOT NULL,
+  `narration` TEXT NULL,
+  `total_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `status` ENUM('POSTED','CANCELLED') NOT NULL DEFAULT 'POSTED',
+  `cancel_reason` VARCHAR(255) NULL,
+  `created_by` INT NULL,
+  `cancelled_by` INT NULL,
+  `cancelled_at` DATETIME NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_fv_company_no` (`company_id`, `voucher_no`),
+  INDEX `idx_fv_date` (`voucher_date`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_voucher_item` (
+  `item_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `voucher_id` INT NOT NULL,
+  `account_id` INT NOT NULL,
+  `debit_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `credit_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `description` VARCHAR(255) NULL,
+  `department_id` INT NULL,
+  `project_id` INT NULL,
+  INDEX `idx_fvi_voucher` (`voucher_id`),
+  INDEX `idx_fvi_account` (`account_id`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_vendor` (
+  `vendor_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `vendor_name` VARCHAR(150) NOT NULL,
+  `tax_no` VARCHAR(50) NULL,
+  `gstin` VARCHAR(20) NULL,
+  `pan` VARCHAR(20) NULL,
+  `contact` VARCHAR(100) NULL,
+  `address` TEXT NULL,
+  `payment_terms` VARCHAR(80) NULL,
+  `bank_name` VARCHAR(120) NULL,
+  `bank_account_no` VARCHAR(60) NULL,
+  `bank_ifsc` VARCHAR(20) NULL,
+  `credit_limit` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY `uk_fvend_company_name` (`company_id`, `vendor_name`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_customer` (
+  `customer_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `customer_name` VARCHAR(150) NOT NULL,
+  `tax_no` VARCHAR(50) NULL,
+  `gstin` VARCHAR(20) NULL,
+  `pan` VARCHAR(20) NULL,
+  `contact` VARCHAR(100) NULL,
+  `address` TEXT NULL,
+  `credit_limit` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `payment_terms` VARCHAR(80) NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY `uk_fcust_company_name` (`company_id`, `customer_name`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_bank_account` (
+  `bank_account_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `bank_name` VARCHAR(120) NOT NULL,
+  `account_ref` VARCHAR(80) NOT NULL,
+  `ifsc` VARCHAR(30) NULL,
+  `branch` VARCHAR(120) NULL,
+  `account_type` VARCHAR(40) NULL,
+  `current_balance` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY `uk_fbank_company_ref` (`company_id`, `account_ref`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_bill` (
+  `bill_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `vendor_id` INT NOT NULL,
+  `bill_no` VARCHAR(40) NOT NULL,
+  `bill_date` DATE NOT NULL,
+  `due_date` DATE NULL,
+  `po_no` VARCHAR(60) NULL,
+  `grn_no` VARCHAR(60) NULL,
+  `po_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `grn_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `total_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `tax_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `match_status` ENUM('NOT_CHECKED','MATCHED','FLAGGED') NOT NULL DEFAULT 'NOT_CHECKED',
+  `status` ENUM('DRAFT','FLAGGED','APPROVED','PAID','CANCELLED') NOT NULL DEFAULT 'DRAFT',
+  `hold_reason` VARCHAR(255) NULL,
+  `created_by` INT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_fbill_company_no` (`company_id`, `bill_no`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_bill_item` (
+  `item_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `bill_id` INT NOT NULL,
+  `description` VARCHAR(255) NULL,
+  `qty` DECIMAL(12,3) NOT NULL DEFAULT 1,
+  `rate` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  INDEX `idx_fbi_bill` (`bill_id`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_invoice` (
+  `invoice_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `customer_id` INT NOT NULL,
+  `project_id` INT NULL,
+  `invoice_no` VARCHAR(40) NOT NULL,
+  `invoice_date` DATE NOT NULL,
+  `due_date` DATE NULL,
+  `total_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `tax_amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `status` ENUM('DRAFT','ISSUED','PAID','CANCELLED') NOT NULL DEFAULT 'DRAFT',
+  `created_by` INT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_finv_company_no` (`company_id`, `invoice_no`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_invoice_item` (
+  `item_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `invoice_id` INT NOT NULL,
+  `description` VARCHAR(255) NULL,
+  `qty` DECIMAL(12,3) NOT NULL DEFAULT 1,
+  `rate` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  `amount` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  INDEX `idx_fii_invoice` (`invoice_id`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_payment` (
+  `payment_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `bill_id` INT NULL,
+  `invoice_id` INT NULL,
+  `bank_account_id` INT NOT NULL,
+  `pay_date` DATE NOT NULL,
+  `amount` DECIMAL(14,2) NOT NULL,
+  `mode` ENUM('NEFT','RTGS','Cheque','Cash','UPI') NOT NULL DEFAULT 'NEFT',
+  `reference_no` VARCHAR(80) NULL,
+  `voucher_id` INT NULL,
+  `created_by` INT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_fpay_company_date` (`company_id`, `pay_date`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_number_series` (
+  `series_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `doc_type` ENUM('INVOICE','BILL') NOT NULL,
+  `prefix` VARCHAR(12) NOT NULL DEFAULT 'DOC',
+  `last_number` INT NOT NULL DEFAULT 0,
+  `updated_by` INT NULL,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_fns_company_type` (`company_id`, `doc_type`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `finance_audit_log` (
+  `log_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `company_id` INT NOT NULL,
+  `entity` VARCHAR(40) NOT NULL,
+  `entity_id` INT NULL,
+  `action` VARCHAR(30) NOT NULL,
+  `summary` VARCHAR(255) NULL,
+  `before_json` TEXT NULL,
+  `after_json` TEXT NULL,
+  `created_by` INT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_fal_company_date` (`company_id`, `created_at`),
+  INDEX `idx_fal_entity` (`company_id`, `entity`, `entity_id`)
+) ENGINE=InnoDB;

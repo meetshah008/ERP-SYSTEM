@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/botanical_background.dart';
@@ -64,6 +65,13 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
   final _unpaidLimitController = TextEditingController(text: '10');
   final _unpaidDeductionController = TextEditingController(text: '1166.67');
 
+  // ================= 4. SALARY TEMPLATE (STEP 4) =================
+  List<dynamic> _salaryTemplates = [];
+  int? _selectedTemplateId;
+  bool _loadingTemplates = false;
+  List<dynamic> _hrCategories = [];
+  int? _selectedHrCategoryId;
+
   // ================= 5. LOGIN ACCOUNT DETAILS (STEP 5) =================
   bool _enableLoginAccount = false;
   final _loginEmailController = TextEditingController();
@@ -83,11 +91,53 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     }
 
     _recalcDeduction(30);
+    _fetchSalaryTemplates();
+    _fetchHrCategories();
 
     // Auto-update deduction on salary change
     _salaryBaseController.addListener(() {
       _recalcDeduction(30);
     });
+  }
+
+  Future<void> _fetchHrCategories() async {
+    try {
+      final res = await ApiClient.get(
+        Uri.parse('${ApiClient.apiHost}/api/hr/categories?status=ACTIVE'),
+      );
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        if (mounted) {
+          setState(() {
+            _hrCategories = (body['data'] as List?) ?? [];
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchSalaryTemplates() async {
+    setState(() => _loadingTemplates = true);
+    try {
+      final res = await ApiClient.get(
+        Uri.parse('${ApiClient.apiHost}/api/payroll/templates'),
+      );
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        final list = (body['data'] as List?) ?? [];
+        if (mounted) {
+          setState(() {
+            _salaryTemplates = list;
+            if (list.isNotEmpty && _selectedTemplateId == null) {
+              _selectedTemplateId = list.first['template_id'] as int?;
+            }
+            _loadingTemplates = false;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loadingTemplates = false);
   }
 
   @override
@@ -195,14 +245,26 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       return;
     }
 
-    if (_designationController.text
-        .trim()
-        .isEmpty) {
-      setState(() => _activeTabIndex = 0);
+    if (_designationController.text.trim().length < 2 ||
+        !RegExp(r'[a-zA-Z]').hasMatch(_designationController.text.trim())) {
+      setState(() => _activeTabIndex = 1);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'Please enter Designation / Post in Step 1 (Company Details)!'),
+              'Please enter a valid Designation / Post in Company Details!'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    final salaryVal = double.tryParse(_salaryBaseController.text.trim());
+    if (salaryVal == null || salaryVal <= 0) {
+      setState(() => _activeTabIndex = 1);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Please enter a valid Monthly Base Salary (> 0) in Company Details!'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -210,10 +272,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     }
 
     if (_selectedDepartmentId == null) {
-      setState(() => _activeTabIndex = 0);
+      setState(() => _activeTabIndex = 1);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a Department in Step 1!'),
+          content: Text('Please select a Department in Company Details!'),
           backgroundColor: Colors.orangeAccent,
         ),
       );
@@ -221,13 +283,24 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     }
 
     // 2. Validate Personal Details
-    if (_fullNameController.text
-        .trim()
-        .isEmpty) {
+    final fullName = _fullNameController.text.trim();
+    if (!RegExp(r"^[a-zA-Z][a-zA-Z\s.\-']{1,59}$").hasMatch(fullName)) {
       setState(() => _activeTabIndex = 0);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter Full Name in Step 1 (Personal Details)!'),
+          content: Text('Please enter a valid Full Name (letters only) in Personal Details!'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    final phone = _phoneController.text.trim();
+    if (!RegExp(r'^\d{10,15}$').hasMatch(phone)) {
+      setState(() => _activeTabIndex = 0);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-15 digit Contact Phone Number!'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -236,14 +309,13 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
 
     // 3. Validate Login Account (Step 5 - Optional)
     if (_enableLoginAccount) {
-      if (_loginEmailController.text
-          .trim()
-          .isEmpty) {
+      final loginEmail = _loginEmailController.text.trim();
+      if (!RegExp(r'^[\w.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}$').hasMatch(loginEmail)) {
         setState(() => _activeTabIndex = 4);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'Please enter Login Email / Username in Step 5 (Login Account)!'),
+                'Please enter a valid Login Email in Step 5 (Login Account)!'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -309,6 +381,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
         'salary_grade': _selectedSalaryGrade,
         'salary_base': double.tryParse(_salaryBaseController.text.trim()) ??
             35000.0,
+        'hr_category_id': _selectedHrCategoryId,
 
         // 2. Personal & Identity
         'full_name': _fullNameController.text.trim(),
@@ -372,6 +445,21 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
       if (!mounted) return;
 
       if (res.statusCode == 201 || resData['success'] == true) {
+        final newEmpId = resData['employee_id'];
+        if (newEmpId != null && _selectedTemplateId != null) {
+          try {
+            await ApiClient.post(
+              Uri.parse('${ApiClient.apiHost}/api/payroll/templates/apply'),
+              body: jsonEncode({
+                'employee_id': newEmpId,
+                'template_id': _selectedTemplateId,
+                'gross_monthly': double.tryParse(_salaryBaseController.text.trim()) ?? 35000.0,
+                'effective_from': _formatDateDb(_joinDate),
+              }),
+            );
+          } catch (_) {}
+        }
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -441,6 +529,7 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 child: CircularProgressIndicator(color: Color(0xFF10B981)))
                 : Form(
               key: _formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
                   horizontal: isMobile ? 14 : 24,
@@ -1404,6 +1493,50 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   if (val != null) setState(() => _selectedDepartmentId = val);
                 },
               ),
+              const SizedBox(height: 14),
+              _buildLabel('HR Category (Auto-selects Salary Template)', isDark),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<int?>(
+                key: ValueKey('comp_cat_$_selectedHrCategoryId'),
+                initialValue: _hrCategories.any((c) => c['category_id'] == _selectedHrCategoryId)
+                    ? _selectedHrCategoryId
+                    : null,
+                decoration: _inputDecoration('Select HR Category', Icons.badge_outlined, isDark),
+                dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                items: [
+                  const DropdownMenuItem<int?>(value: null, child: Text('None / Custom')),
+                  ..._hrCategories.map<DropdownMenuItem<int?>>((c) {
+                    return DropdownMenuItem<int?>(
+                      value: c['category_id'] as int,
+                      child: Text('${c['category_name']} (${c['category_code']})'),
+                    );
+                  }),
+                ],
+                onChanged: (val) {
+                  setState(() {
+                    _selectedHrCategoryId = val;
+                    if (val != null) {
+                      final cat = _hrCategories.cast<dynamic>().firstWhere(
+                            (c) => c['category_id'] == val,
+                        orElse: () => null,
+                      );
+                      if (cat != null) {
+                        final defTplId = cat['default_template_id'];
+                        if (defTplId != null &&
+                            _salaryTemplates.any((t) => t['template_id'] == defTplId)) {
+                          _selectedTemplateId = defTplId as int;
+                        }
+                        final defGross = double.tryParse('${cat['default_gross'] ?? ''}');
+                        if (defGross != null && defGross > 0) {
+                          _salaryBaseController.text = defGross.toStringAsFixed(0);
+                        }
+                      }
+                    }
+                  });
+                },
+              ),
+
             ],
           ),
           second: Column(
@@ -1536,10 +1669,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 decoration: _inputDecoration(
                     'e.g. Production Manager / Senior Operator',
                     Icons.work_outline, isDark),
-                validator: (v) =>
-                (v == null || v
-                    .trim()
-                    .isEmpty) ? 'Designation required' : null,
+                validator: (v) {
+                  final val = (v ?? '').trim();
+                  if (val.isEmpty) return 'Designation required';
+                  if (val.length < 2 || !RegExp(r'[a-zA-Z]').hasMatch(val)) {
+                    return 'Enter a valid designation';
+                  }
+                  return null;
+                },
               ),
             ],
           ),
@@ -1554,6 +1691,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                     fontSize: 13),
                 decoration: _inputDecoration(
                     'e.g. staff@company.com', Icons.alternate_email, isDark),
+                validator: (v) {
+                  final val = (v ?? '').trim();
+                  if (val.isEmpty) return null;
+                  if (!RegExp(r'^[\w.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}$').hasMatch(val)) {
+                    return 'Enter a valid email address';
+                  }
+                  return null;
+                },
               ),
             ],
           ),
@@ -1708,6 +1853,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               controller: _salaryBaseController,
               keyboardType: const TextInputType.numberWithOptions(
                   decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
               style: TextStyle(color: isDark ? Colors.white : Colors.black87,
                   fontSize: 14,
                   fontWeight: FontWeight.bold),
@@ -1718,10 +1866,15 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                     color: isDark ? Colors.white38 : Colors.black45,
                     fontSize: 11),
               ),
-              validator: (v) =>
-              (v == null || v
-                  .trim()
-                  .isEmpty) ? 'Base Salary is required' : null,
+              validator: (v) {
+                final val = (v ?? '').trim();
+                if (val.isEmpty) return 'Base Salary is required';
+                final numVal = double.tryParse(val);
+                if (numVal == null || numVal <= 0) {
+                  return 'Enter a valid salary (> 0)';
+                }
+                return null;
+              },
             ),
           ],
         ),
@@ -1746,15 +1899,22 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             _buildLabel('Full Name *', isDark),
             TextFormField(
               controller: _fullNameController,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\s.\-']")),
+              ],
               style: TextStyle(
                   color: isDark ? Colors.white : const Color(0xFF0F172A),
                   fontSize: 13.5),
               decoration: _inputDecoration(
                   'e.g. Ramesh Patel', Icons.person_outline, isDark),
-              validator: (v) =>
-              (v == null || v
-                  .trim()
-                  .isEmpty) ? 'Full Name is required' : null,
+              validator: (v) {
+                final val = (v ?? '').trim();
+                if (val.isEmpty) return 'Full Name is required';
+                if (!RegExp(r"^[a-zA-Z][a-zA-Z\s.\-']{1,59}$").hasMatch(val)) {
+                  return 'Enter a valid name (letters only)';
+                }
+                return null;
+              },
             ),
           ],
         ),
@@ -1768,15 +1928,23 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             TextFormField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(15),
+              ],
               style: TextStyle(
                   color: isDark ? Colors.white : const Color(0xFF0F172A),
                   fontSize: 13.5),
               decoration: _inputDecoration(
                   'e.g. 9876543210', Icons.phone_outlined, isDark),
-              validator: (v) =>
-              (v == null || v
-                  .trim()
-                  .isEmpty) ? 'Phone number is required' : null,
+              validator: (v) {
+                final val = (v ?? '').trim();
+                if (val.isEmpty) return 'Phone number is required';
+                if (!RegExp(r'^\d{10,15}$').hasMatch(val)) {
+                  return 'Enter valid 10–15 digit phone number';
+                }
+                return null;
+              },
             ),
           ],
         ),
@@ -1794,11 +1962,24 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   TextFormField(
                     controller: _ageController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(2),
+                    ],
                     style: TextStyle(
                         color: isDark ? Colors.white : const Color(0xFF0F172A),
                         fontSize: 13.5),
                     decoration: _inputDecoration(
                         '28', Icons.cake_outlined, isDark),
+                    validator: (v) {
+                      final val = (v ?? '').trim();
+                      if (val.isEmpty) return null;
+                      final age = int.tryParse(val);
+                      if (age == null || age < 16 || age > 80) {
+                        return 'Age 16–80';
+                      }
+                      return null;
+                    },
                   ),
                 ],
               ),
@@ -1923,6 +2104,10 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             TextFormField(
               controller: _aadharController,
               keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(12),
+              ],
               style: TextStyle(
                 color: isDark ? Colors.white : const Color(0xFF0F172A),
                 fontSize: 13.5,
@@ -1930,8 +2115,16 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                 letterSpacing: 0.5,
               ),
               decoration: _inputDecoration(
-                  '12 Digit Aadhar (e.g. 1234 5678 9012)',
+                  '12 Digit Aadhar (e.g. 123456789012)',
                   Icons.credit_card_outlined, isDark),
+              validator: (v) {
+                final val = (v ?? '').trim();
+                if (val.isEmpty) return null;
+                if (!RegExp(r'^\d{12}$').hasMatch(val)) {
+                  return 'Aadhar number must be exactly 12 digits';
+                }
+                return null;
+              },
             ),
           ],
         ),
@@ -1946,6 +2139,15 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
             TextFormField(
               controller: _panController,
               textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                LengthLimitingTextInputFormatter(10),
+                TextInputFormatter.withFunction(
+                  (oldValue, newValue) => newValue.copyWith(
+                    text: newValue.text.toUpperCase(),
+                  ),
+                ),
+              ],
               style: TextStyle(
                 color: isDark ? Colors.white : const Color(0xFF0F172A),
                 fontSize: 13.5,
@@ -1954,6 +2156,14 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
               ),
               decoration: _inputDecoration(
                   'e.g. ABCDE1234F', Icons.badge_outlined, isDark),
+              validator: (v) {
+                final val = (v ?? '').trim().toUpperCase();
+                if (val.isEmpty) return null;
+                if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(val)) {
+                  return 'Enter valid 10-char PAN (e.g. ABCDE1234F)';
+                }
+                return null;
+              },
             ),
           ],
         ),
@@ -1970,6 +2180,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   _buildLabel('City', isDark),
                   TextFormField(
                     controller: _cityController,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\s.\-']")),
+                    ],
                     style: TextStyle(
                         color: isDark ? Colors.white : const Color(0xFF0F172A),
                         fontSize: 13.5),
@@ -1986,6 +2199,9 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                   _buildLabel('State', isDark),
                   TextFormField(
                     controller: _stateController,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\s.\-']")),
+                    ],
                     style: TextStyle(
                         color: isDark ? Colors.white : const Color(0xFF0F172A),
                         fontSize: 13.5),
@@ -2462,60 +2678,182 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
     );
   }
 
-  // ================= TAB 4: SALARY TEMPLATE (COMING SOON) =================
+  // ================= TAB 4: SALARY TEMPLATE =================
   Widget _buildSalaryTemplateTabContent(bool isDark, bool isMobile) {
+    final gross = double.tryParse(_salaryBaseController.text.trim()) ?? 35000.0;
+    final tpl = _salaryTemplates.cast<dynamic>().firstWhere(
+          (t) => t['template_id'] == _selectedTemplateId,
+          orElse: () => null,
+        );
+
+    double d(dynamic v) => double.tryParse('${v ?? 0}') ?? 0.0;
+    final basicPct = d(tpl?['basic_percent'] ?? 50);
+    final hraPct = d(tpl?['hra_percent'] ?? 40);
+    final convFixed = d(tpl?['conveyance_fixed'] ?? 1600);
+    final pfOn = (tpl?['pf_applicable'] ?? 1) == 1;
+    final esiOn = (tpl?['esi_applicable'] ?? 1) == 1;
+    final ptOn = (tpl?['pt_applicable'] ?? 1) == 1;
+
+    final basic = (gross * basicPct) / 100.0;
+    final hra = (basic * hraPct) / 100.0;
+    final conv = convFixed.clamp(0.0, (gross - basic - hra).clamp(0.0, gross));
+    final special = (gross - basic - hra - conv).clamp(0.0, gross);
+    final pfCut = pfOn ? (basic.clamp(0.0, 15000.0) * 0.12) : 0.0;
+    final esiCut = (esiOn && gross <= 21000.0) ? (gross * 0.0075) : 0.0;
+    final ptCut = ptOn ? (gross > 10000 ? 200.0 : (gross > 7500 ? 175.0 : 0.0)) : 0.0;
+    final netPay = (gross - pfCut - esiCut - ptCut).clamp(0.0, gross);
+
     return _buildTabCardContainer(
       title: 'Salary Template & Structure',
-      subtitle: 'Configurable compensation template, allowances & bonus breakdown (Coming Soon)',
+      subtitle: 'Select a company salary template to preview and assign breakup for this employee',
       icon: Icons.receipt_long_outlined,
-      accentColor: const Color(0xFF8B5CF6),
+      accentColor: const Color(0xFF0F766E),
       isDark: isDark,
       isMobile: isMobile,
       children: [
-        Container(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(
-              vertical: isMobile ? 24 : 40, horizontal: isMobile ? 14 : 20),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.03) : const Color(
-                0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isDark ? Colors.white10 : Colors.black12,
-                style: BorderStyle.solid),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+        if (_loadingTemplates)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_salaryTemplates.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('No salary templates found. Create one in Salary Templates first.'),
+          )
+        else ...[
+          if (_hrCategories.isNotEmpty) ...[
+            DropdownButtonFormField<int?>(
+              initialValue: _hrCategories.any((c) => c['category_id'] == _selectedHrCategoryId)
+                  ? _selectedHrCategoryId
+                  : null,
+              decoration: InputDecoration(
+                labelText: 'HR Category (Auto-selects Salary Template)',
+                filled: true,
+                fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              items: [
+                const DropdownMenuItem<int?>(
+                  value: null,
+                  child: Text('-- None / Select Manually --'),
                 ),
-                child: Icon(Icons.account_balance_wallet_outlined,
-                    size: isMobile ? 28 : 36, color: const Color(0xFF8B5CF6)),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Salary Template Configuration',
-                style: TextStyle(
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                  fontSize: isMobile ? 14 : 15,
-                  fontWeight: FontWeight.bold,
+                ..._hrCategories.map<DropdownMenuItem<int?>>(
+                  (c) => DropdownMenuItem<int?>(
+                    value: c['category_id'] as int,
+                    child: Text('${c['category_name']} (${c['category_code']})'),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Custom allowances (HRA, DA, Medical), PF deductions and gross CTC templates will be added here.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
-                    fontSize: isMobile ? 11 : 12),
-              ),
-            ],
+              ],
+              onChanged: (val) {
+                setState(() {
+                  _selectedHrCategoryId = val;
+                  if (val != null) {
+                    final cat = _hrCategories.cast<dynamic>().firstWhere(
+                          (c) => c['category_id'] == val,
+                          orElse: () => null,
+                        );
+                    if (cat != null) {
+                      final defTplId = cat['default_template_id'];
+                      if (defTplId != null &&
+                          _salaryTemplates.any((t) => t['template_id'] == defTplId)) {
+                        _selectedTemplateId = defTplId as int;
+                      }
+                      final defGross = cat['default_gross'];
+                      if (defGross != null && (double.tryParse('$defGross') ?? 0) > 0) {
+                        _salaryBaseController.text = '$defGross';
+                      }
+                    }
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+          DropdownButtonFormField<int?>(
+            key: ValueKey('onboard_tpl_$_selectedTemplateId'),
+            initialValue: _salaryTemplates.any((t) => t['template_id'] == _selectedTemplateId)
+                ? _selectedTemplateId
+                : null,
+            decoration: InputDecoration(
+              labelText: 'Select Salary Template',
+              filled: true,
+              fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            items: _salaryTemplates
+                .map<DropdownMenuItem<int?>>(
+                  (t) => DropdownMenuItem<int?>(
+                    value: t['template_id'] as int,
+                    child: Text('${t['template_name']}'),
+                  ),
+                )
+                .toList(),
+            onChanged: (val) => setState(() => _selectedTemplateId = val),
           ),
-        ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withValues(alpha: 0.03) : const Color(0xFFF0FDFA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isDark ? Colors.white12 : const Color(0xFF99F6E4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Live Breakup Preview (Monthly Gross: ₹${gross.toStringAsFixed(0)})',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Color(0xFF0F766E),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _buildTemplateRow('Basic ($basicPct% of Gross)', '₹${basic.toStringAsFixed(2)}', isDark),
+                _buildTemplateRow('HRA ($hraPct% of Basic)', '₹${hra.toStringAsFixed(2)}', isDark),
+                _buildTemplateRow('Conveyance Allowance', '₹${conv.toStringAsFixed(2)}', isDark),
+                _buildTemplateRow('Special Allowance', '₹${special.toStringAsFixed(2)}', isDark),
+                const Divider(height: 18),
+                _buildTemplateRow('PF Deduction (Employee)', '- ₹${pfCut.toStringAsFixed(2)}', isDark),
+                _buildTemplateRow('ESI Deduction (Employee)', '- ₹${esiCut.toStringAsFixed(2)}', isDark),
+                _buildTemplateRow('Professional Tax (PT)', '- ₹${ptCut.toStringAsFixed(2)}', isDark),
+                const Divider(height: 18),
+                _buildTemplateRow('Estimated Net In-Hand', '₹${netPay.toStringAsFixed(2)}', isDark, isBold: true),
+              ],
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  Widget _buildTemplateRow(String label, String value, bool isDark, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isBold ? 14 : 13,
+              fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
+              color: isDark ? Colors.white70 : const Color(0xFF334155),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isBold ? 15 : 13,
+              fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
+              color: isBold ? const Color(0xFF0F766E) : (isDark ? Colors.white : const Color(0xFF0F172A)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2630,11 +2968,11 @@ class _EmployeeOnboardingScreenState extends State<EmployeeOnboardingScreen> {
                       fontSize: 13),
                   validator: (val) {
                     if (!_enableLoginAccount) return null;
-                    if (val == null || val
-                        .trim()
-                        .isEmpty) return 'Login Email/Username is required';
-                    if (!val.contains('@') || !val.contains('.'))
+                    final v = (val ?? '').trim();
+                    if (v.isEmpty) return 'Login Email/Username is required';
+                    if (!RegExp(r'^[\w.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}$').hasMatch(v)) {
                       return 'Please enter a valid email address';
+                    }
                     return null;
                   },
                 ),

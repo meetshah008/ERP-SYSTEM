@@ -3,6 +3,7 @@ const router = express.Router();
 const hrController = require('./hr.controller');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() }); // File memory mein rakhega
+const { authenticate, requirePermission } = require('../../utils/auth');
 
 // Naya employee save karne ka route (POST)
 router.post('/employees', hrController.addEmployee);
@@ -76,4 +77,14 @@ router.put('/employees/:id/role', hrController.updateEmployeeRole);   // Promote
 router.put('/employees/:id/status', hrController.updateEmployeeStatus); // Terminate / Ban / Activate
 router.put('/employees/:id', hrController.updateEmployee);             // Edit Profile
 router.delete('/employees/:id', hrController.deleteEmployee);          // Delete
+
+
+// HR Category Master Routes
+router.get('/categories', authenticate, requirePermission('hr_view_directory', 'hr_manage_staff'), hrController.getHrCategories);
+router.post('/categories', authenticate, requirePermission('hr_manage_staff', 'hr_manage_departments'), hrController.createHrCategory);
+router.put('/categories/:id', authenticate, requirePermission('hr_manage_staff', 'hr_manage_departments'), hrController.updateHrCategory);
+router.delete('/categories/:id', authenticate, requirePermission('hr_manage_staff', 'hr_manage_departments'), hrController.deleteHrCategory);
+router.post('/categories/:id/assign-members', authenticate, requirePermission('hr_manage_staff', 'hr_manage_departments'), hrController.assignCategoryMembers);
+
+
 module.exports = router;

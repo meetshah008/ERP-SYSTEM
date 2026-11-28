@@ -2237,25 +2237,28 @@ class _ProjectTasksScreenState extends State<ProjectTasksScreen> with SingleTick
                 ),
                 const SizedBox(height: 16),
 
-                // 3. Status Tabs with Pill Badges (To do, In progress, Done)
-                Row(
-                  children: [
-                    _buildMobileKanbanTabItem('To do', todoCount, _genMobileColumnTab == 'TODO', () {
-                      setState(() => _genMobileColumnTab = 'TODO');
-                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
-                    const SizedBox(width: 18),
-                    _buildMobileKanbanTabItem('In progress', inProgCount, _genMobileColumnTab == 'IN_PROGRESS', () {
-                      setState(() => _genMobileColumnTab = 'IN_PROGRESS');
-                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
-                    const SizedBox(width: 18),
-                    _buildMobileKanbanTabItem('Review', reviewCount, _genMobileColumnTab == 'REVIEW', () {
-                      setState(() => _genMobileColumnTab = 'REVIEW');
-                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
-                    const SizedBox(width: 18),
-                    _buildMobileKanbanTabItem('Done', doneCount, _genMobileColumnTab == 'DONE', () {
-                      setState(() => _genMobileColumnTab = 'DONE');
-                    }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
-                  ],
+                // 3. Status Tabs with Pill Badges (To do, In progress, Review, Done)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildMobileKanbanTabItem('To do', todoCount, _genMobileColumnTab == 'TODO', () {
+                        setState(() => _genMobileColumnTab = 'TODO');
+                      }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                      const SizedBox(width: 14),
+                      _buildMobileKanbanTabItem('In progress', inProgCount, _genMobileColumnTab == 'IN_PROGRESS', () {
+                        setState(() => _genMobileColumnTab = 'IN_PROGRESS');
+                      }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                      const SizedBox(width: 14),
+                      _buildMobileKanbanTabItem('Review', reviewCount, _genMobileColumnTab == 'REVIEW', () {
+                        setState(() => _genMobileColumnTab = 'REVIEW');
+                      }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                      const SizedBox(width: 14),
+                      _buildMobileKanbanTabItem('Done', doneCount, _genMobileColumnTab == 'DONE', () {
+                        setState(() => _genMobileColumnTab = 'DONE');
+                      }, isDark ? Colors.white : const Color(0xFF09090B), isDark ? Colors.white60 : const Color(0xFF71717A), isDark),
+                    ],
+                  ),
                 ),
               ],
             ),
