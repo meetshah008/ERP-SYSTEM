@@ -3440,7 +3440,7 @@ exports.getHrCategories = async (req, res) => {
        let sql = `
          SELECT c.category_id, c.company_id, c.category_name, c.category_code,
                 c.description, c.default_template_id, c.default_gross,
-                t.template_name AS default_template_name,
+                MAX(t.template_name) AS default_template_name,
                 c.is_active, c.created_at, c.updated_at,
                 COUNT(e.employee_id) AS employee_count
          FROM hr_categories c
